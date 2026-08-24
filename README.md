@@ -56,6 +56,59 @@ python -m playwright install chromium
 
 Los archivos generados quedan en `data/exports/`.
 
+## Despliegue con Docker
+
+La aplicación se conteneriza con un display virtual (Xvfb): Chromium corre con
+ventana "visible" dentro del contenedor (mismo comportamiento anti-detección que
+en local) y puedes verlo/controlarlo desde tu navegador vía noVNC para completar
+el login de LinkedIn en el servidor.
+
+### Archivos
+
+- `Dockerfile` — imagen oficial Playwright + Xvfb/noVNC
+- `entrypoint.sh` — arranca display virtual, VNC y gunicorn
+- `docker-compose.yml` — puerto 5000 (app), 6080 (noVNC), volumen `./data`
+
+### Desplegar en el servidor
+
+1. Instala Docker Engine + plugin compose en el servidor (Linux):
+
+   ```bash
+   curl -fsSL https://get.docker.com | sh
+   ```
+
+2. Clona el repo y levanta el servicio:
+
+   ```bash
+   git clone <url-del-repo>
+   cd scrapping
+   docker compose up -d --build
+   ```
+
+3. Abre los puertos en el firewall: `5000` (app web) y `6080` (noVNC).
+
+4. **Primer login**: entra a `http://<servidor>:6080/vnc.html` (escritorio del
+   contenedor), y en otra pestaña abre `http://<servidor>:5000`, pulsa
+   **Iniciar sesión** y escribe tus credenciales/captcha dentro del canvas de
+   noVNC. Tienes 5 minutos. La sesión queda guardada en `data/storage_state.json`
+   (volumen persistente) y los siguientes inicios serán automáticos.
+
+### Notas de operación
+
+- `data/` se monta como volumen: la sesión y los Excel sobreviven a reinicios y
+  recreaciones del contenedor.
+- Los jobs en curso viven en memoria: al reiniciar el contenedor se pierden
+  (los Excel ya descargados no).
+- noVNC queda expuesto **sin contraseña** por defecto. Protégelo descomentando
+  `VNC_PASSWORD` en `docker-compose.yml` o restringiendo el puerto 6080 en el
+  firewall (ábrenlo solo durante el login).
+- Actualizar a una nueva versión:
+
+  ```bash
+  git pull
+  docker compose up -d --build
+  ```
+
 ## Estructura
 
 ```

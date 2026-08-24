@@ -429,13 +429,16 @@ class LinkedInScraper:
 
     async def _open(self):
         self._pw = await async_playwright().start()
+        launch_args = [
+            "--disable-blink-features=AutomationControlled",
+            "--disable-infobars",
+            "--start-maximized",
+        ]
+        if os.getenv("CHROMIUM_NO_SANDBOX") == "1":
+            launch_args.append("--no-sandbox")
         browser = await self._pw.chromium.launch(
             headless=False,
-            args=[
-                "--disable-blink-features=AutomationControlled",
-                "--disable-infobars",
-                "--start-maximized",
-            ],
+            args=launch_args,
             ignore_default_args=["--enable-automation"],
         )
         context = await browser.new_context(

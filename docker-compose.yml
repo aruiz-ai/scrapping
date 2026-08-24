@@ -1,0 +1,21 @@
+services:
+  app:
+    build: .
+    container_name: linkedin-scraper
+    ports:
+      - "5000:5000"
+      - "6080:6080"
+    volumes:
+      - ./data:/app/data
+    environment:
+      CHROMIUM_NO_SANDBOX: "1"
+      VNC_ENABLED: "1"
+      # Descomenta para proteger el escritorio noVNC con contraseña:
+      # VNC_PASSWORD: "cambia-esto"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:5000/api/auth/status', timeout=5)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s

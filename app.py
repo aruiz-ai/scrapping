@@ -1,4 +1,5 @@
 import os
+import re
 import threading
 
 from flask import Flask, jsonify, render_template, request, send_file
@@ -59,6 +60,28 @@ def _run_login():
         LOGIN_STATE["running"] = False
 
 
+def _normalize_list(value):
+    """Acepta una lista JSON o texto separado por coma/;/| (con soporte de
+    comillas para valores que contienen coma) y devuelve una lista limpia."""
+    if value is None:
+        return []
+    if isinstance(value, (list, tuple)):
+        parts = [str(item) for item in value]
+    else:
+        parts, current, quoted = [], [], False
+        for char in str(value):
+            if char == '"':
+                quoted = not quoted
+                continue
+            if not quoted and char in ",;|\n":
+                parts.append("".join(current))
+                current = []
+            else:
+                current.append(char)
+        parts.append("".join(current))
+    return [re.sub(r"\s+", " ", part).strip() for part in parts if part.strip()]
+
+
 @app.post("/api/search")
 def api_search():
     data = request.get_json(silent=True) or {}
@@ -76,17 +99,18 @@ def api_search():
             max_pages = config.DEFAULT_MAX_PAGES
         max_pages = max(1, min(max_pages, config.MAX_PAGES_LIMIT))
 
+    # Filtros del nuevo panel: ubicación(es), sector(es) y SIEMPRE la empresa
+    # buscada como "Empresa actual" (automática, no la pide el usuario).
     raw_filters = data.get("filters") or {}
-    filters = {}
-    for key, value in raw_filters.items():
-        if key not in ("title", "industry", "company"):
-            continue
-        if isinstance(value, list):
-            text = ",".join(str(item).strip() for item in value if str(item).strip())
-        else:
-            text = str(value).strip()
-        if text:
-            filters[key] = text
+    locations = _normalize_list(raw_filters.get("locations"))
+    industries = _normalize_list(raw_filters.get("industries"))
+    filters = None
+    if locations or industries:
+        filters = {
+            "locations": locations,
+            "industries": industries,
+            "current_company": company,
+        }
 
     if not os.path.exists(config.STORAGE_STATE_PATH):
         return jsonify({"error": "Necesitas iniciar sesión en LinkedIn primero."}), 401

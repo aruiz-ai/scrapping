@@ -4,7 +4,7 @@ import random
 import re
 import time
 import unicodedata
-from urllib.parse import parse_qsl, quote_plus, urlencode, urlsplit, urlunsplit
+from urllib.parse import quote_plus
 
 from playwright.async_api import async_playwright
 
@@ -217,7 +217,6 @@ class LinkedInScraper:
                 "&origin=GLOBAL_SEARCH_HEADER"
             )
             all_results = []
-            base_url = None
             page_no = 0
             while True:
                 page_no += 1
@@ -227,10 +226,15 @@ class LinkedInScraper:
                     break
                 page_started = time.monotonic()
                 if page_no == 1:
-                    url = first_url
+                    await page.goto(
+                        first_url, wait_until="domcontentloaded", timeout=60000
+                    )
                 else:
-                    url = f"{base_url or first_url}&page={page_no}"
-                await page.goto(url, wait_until="domcontentloaded", timeout=60000)
+                    # Paginación SIEMPRE con clic en Next dentro de la SPA:
+                    # la URL no conserva los filtros del nuevo panel (estado
+                    # cliente), y goto(&page=N) los pierde.
+                    if not await self._go_to_next_page(page):
+                        break
                 await self._check_interruptions(page)
                 try:
                     await page.wait_for_selector(
@@ -243,7 +247,6 @@ class LinkedInScraper:
 
                 if page_no == 1 and filters:
                     await self._apply_filters(page, filters)
-                    base_url = self._strip_page_param(page.url)
                     await self._check_interruptions(page)
                     try:
                         await page.wait_for_selector(
@@ -270,24 +273,42 @@ class LinkedInScraper:
             await browser.close()
             await self._pw.stop()
 
-    @staticmethod
-    def _strip_page_param(url):
-        parts = urlsplit(url)
-        query = [
-            kv
-            for kv in parse_qsl(parts.query, keep_blank_values=True)
-            if kv[0] != "page"
-        ]
-        return urlunsplit(
-            (parts.scheme, parts.netloc, parts.path, urlencode(query), parts.fragment)
-        )
+    async def _go_to_next_page(self, page):
+        """Avanza a la siguiente página de resultados DENTRO de la SPA.
+
+        Estrategia dual: data-test-id legacy y, si no existe, botón
+        Next/Siguiente por rol y nombre (el panel 2026 ya no usa aquel
+        atributo). Devuelve False cuando no hay página siguiente (sin botón
+        o deshabilitado), lo que corta el recorrido.
+        """
+        candidates = []
+        legacy = page.locator(selectors.NEXT_PAGE_LEGACY)
+        if await legacy.count() > 0:
+            candidates.append(legacy.first)
+        rol = page.get_by_role("button", name=selectors.NEXT_PAGE_FALLBACK).first
+        if await rol.count() > 0:
+            candidates.append(rol)
+        for candidate in candidates:
+            try:
+                if not await candidate.is_visible():
+                    continue
+                if await candidate.is_disabled():
+                    return False
+                await candidate.click(timeout=8000)
+            except Exception:
+                continue
+            await self._human_delay(5, 9)
+            return True
+        return False
 
     async def _apply_filters(self, page, filters):
-        """Abre el modal 'Todos los filtros' y aplica los filtros dados.
+        """Abre el panel 'All filters' y aplica los filtros como chips.
 
-        Cada filtro se aplica con try/except para que un cambio del DOM de
-        LinkedIn no tumbe la búsqueda entera: si algo falla se continúa con el
-        resto de filtros (o sin ellos).
+        Formato: {locations: [...], industries: [...], current_company: str}.
+        El panel 2026 aplica cada selección AL INSTANTE (no hay botón Apply);
+        al terminar se cierra con Escape y los resultados quedan filtrados
+        detrás. Cada bloque tiene try/except propio para que un fallo de un
+        filtro no tumbe la búsqueda entera.
         """
         try:
             trigger = page.get_by_role("button", name=selectors.ALL_FILTERS_TRIGGER_TEXT)
@@ -300,64 +321,85 @@ class LinkedInScraper:
         except Exception:
             return
 
-        if filters.get("title"):
-            await self._fill_text_field(page, selectors.TITLE_FIELD_LABELS, filters["title"])
-        if filters.get("company"):
-            await self._fill_text_field(page, selectors.COMPANY_FIELD_LABELS, filters["company"])
-        if filters.get("industry"):
-            await self._pick_industries(page, filters["industry"])
-
-        apply_link = page.get_by_role("link", name=selectors.APPLY_FILTERS_TEXT)
-        try:
-            await apply_link.first.click(timeout=8000)
-        except Exception:
-            pass
-
-    async def _fill_text_field(self, page, name_regex, value):
-        try:
-            box = page.get_by_role("textbox", name=name_regex).first
-            await box.fill(value, timeout=5000)
-        except Exception:
-            return
-
-    @staticmethod
-    def _split_sectors(value):
-        """Divide un valor de sectores en varios (comas, ;, | o saltos)."""
-        if not value:
-            return []
-        parts = re.split(r"[,;|\n]+", value)
-        return [re.sub(r"\s+", " ", part).strip() for part in parts if part.strip()]
-
-    async def _pick_industries(self, page, value):
-        """Agrega uno o varios sectores (LinkedIn sí admite chips múltiples)."""
-        for sector in self._split_sectors(value):
-            await self._pick_industry(page, sector)
-
-    async def _pick_industry(self, page, value):
-        """Agrega un sector: asegura el buscador abierto, escribe y pulsa la opción."""
-        box = page.locator(
-            f"input[placeholder='{selectors.SECTOR_SEARCH_PLACEHOLDER}']"
-        )
-        if await box.count() == 0 or not await box.first.is_visible():
+        for location in filters.get("locations") or []:
             try:
-                add_btn = page.get_by_role("button", name=selectors.ADD_SECTOR_BUTTON_TEXT)
-                await add_btn.first.click(timeout=8000)
+                await self._pick_combo(
+                    page,
+                    selectors.ADD_LOCATION_BUTTON_TEXT,
+                    selectors.LOCATION_INPUT,
+                    location,
+                )
             except Exception:
-                return
-            await asyncio.sleep(1.5)
+                pass
+        for industry in filters.get("industries") or []:
+            try:
+                await self._pick_combo(
+                    page,
+                    selectors.ADD_INDUSTRY_BUTTON_TEXT,
+                    selectors.INDUSTRY_INPUT,
+                    industry,
+                )
+            except Exception:
+                pass
+        if filters.get("current_company"):
+            try:
+                await self._pick_combo(
+                    page,
+                    selectors.ADD_COMPANY_BUTTON_TEXT,
+                    selectors.COMPANY_INPUT,
+                    filters["current_company"],
+                )
+            except Exception:
+                pass
+
+        # Sin botón Apply: los chips ya están activos; solo cerrar el panel.
         try:
-            await box.first.fill(value, timeout=5000)
-        except Exception:
-            return
-        await asyncio.sleep(2.5)
-        try:
-            option = page.get_by_role(
-                "option", name=re.compile(re.escape(value), re.IGNORECASE)
-            ).first
-            await option.click(timeout=6000)
+            await page.keyboard.press("Escape")
         except Exception:
             pass
-        await asyncio.sleep(1.2)
+        await asyncio.sleep(config.FILTER_CLOSE_DELAY)
+
+    async def _pick_combo(self, page, add_button_regex, input_selector, value):
+        """Selecciona un valor en un combo typeahead del panel de filtros.
+
+        Flujo calibrado en vivo (2026): si el botón 'Add X' sigue visible se
+        pulsa para desplegar el buscador (desaparece tras el primer chip de
+        su sección); se escribe el valor, se esperan las opciones (~4 s) y se
+        hace clic en aquella cuya PRIMERA LÍNEA coincida exactamente en
+        minúsculas (las opciones de empresa traen texto compuesto tipo
+        'Google |  | Software Development'). Si no hay coincidencia se pulsa
+        Escape para cerrar el desplegable y no contaminar la siguiente
+        selección.
+        """
+        add_btn = page.get_by_role("button", name=add_button_regex).first
+        try:
+            if await add_btn.count() > 0 and await add_btn.is_visible():
+                await add_btn.click(timeout=5000)
+                await asyncio.sleep(config.FILTER_ADD_DELAY)
+        except Exception:
+            pass
+        box = page.locator(input_selector).first
+        await box.click(timeout=5000)
+        await asyncio.sleep(1)
+        await box.fill(value, timeout=5000)
+        await asyncio.sleep(config.FILTER_TYPEAHEAD_DELAY)
+        options = page.locator("[role=option]")
+        for index in range(await options.count()):
+            try:
+                first_line = (
+                    (await options.nth(index).inner_text()).strip().splitlines()[0].strip()
+                )
+            except Exception:
+                continue
+            if first_line.lower() == value.strip().lower():
+                await options.nth(index).click(timeout=6000)
+                await asyncio.sleep(config.FILTER_SELECT_DELAY)
+                return
+        try:
+            await page.keyboard.press("Escape")
+        except Exception:
+            pass
+        await asyncio.sleep(config.FILTER_RETRY_DELAY)
 
     async def _login(self, timeout_seconds):
         browser, context, page = await self._open()

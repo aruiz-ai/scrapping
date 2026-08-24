@@ -69,7 +69,6 @@
     .filters-details summary { font-weight: 600; cursor: pointer; color: #0a66c2; }
     .filters-details label { margin-top: 10px; }
     .filters-hint { font-size: 12px; color: #5e5d5f; margin-top: 6px; }
-    .sector-multi { width: 100%; height: auto; min-height: 100px; font-size: 13px; padding: 8px; margin-top: 4px; border: 1px solid #ccc; border-radius: 6px; }
     .progress-fill.indeterminate { width: 40% !important; animation: indeterminate 1.2s ease-in-out infinite; }
     @keyframes indeterminate {
       0% { margin-left: -40%; }
@@ -103,204 +102,15 @@
         </label>
         <details class="filters-details">
           <summary>Filtros de LinkedIn (opcional)</summary>
-          <label for="filterTitle">Cargo / Título</label>
-          <input type="text" id="filterTitle" placeholder="Ej. Software Engineer" autocomplete="off">
-          <label for="filterIndustry">Sector / Industria (selección múltiple)</label>
-          <select id="filterIndustry" class="sector-multi" multiple size="10">
-            <option>Administración de justicia</option>
-            <option>Administración de servicios públicos</option>
-            <option>Administración pública</option>
-            <option>Agricultura</option>
-            <option>Agricultura, ganadería, ingeniería forestal</option>
-            <option>Alquiler de bienes inmuebles no residenciales</option>
-            <option>Alquiler de bienes inmuebles residenciales</option>
-            <option>Alquiler de equipos comerciales e industriales</option>
-            <option>Aplicaciones de juegos para dispositivos móviles</option>
-            <option>Artistas y escritores</option>
-            <option>Atención a la salud mental</option>
-            <option>Banca</option>
-            <option>Banca de inversión</option>
-            <option>Bed and breakfasts, hostales y alojamientos en casas particulares</option>
-            <option>Bienes inmuebles</option>
-            <option>Bodegas</option>
-            <option>Cine, vídeo y sonido</option>
-            <option>Comercio al por mayor</option>
-            <option>Comercio al por mayor de artículos de lujo y joyería</option>
-            <option>Comercio al por mayor de equipos informáticos</option>
-            <option>Comercio al por mayor de materiales de construcción</option>
-            <option>Comercio al por mayor de materias primas agrarias</option>
-            <option>Comercio al por mayor de químicos y productos derivados</option>
-            <option>Comercio al por menor</option>
-            <option>Comercio al por menor de artículos de lujo y joyería</option>
-            <option>Comercio al por menor de comestibles</option>
-            <option>Comercio al por menor de equipos de oficina</option>
-            <option>Comercio al por menor de materiales de construcción y equipos de jardinería</option>
-            <option>Comercio al por menor de materiales reciclables y artículos de segunda mano</option>
-            <option>Comercio al por menor de obras de arte</option>
-            <option>Comercio al por menor de prendas de vestir y moda</option>
-            <option>Comercio al por menor de productos para bellas artes</option>
-            <option>Construcción</option>
-            <option>Construcción de estructuras de servicios públicos</option>
-            <option>Construcción naval</option>
-            <option>Consultoría y servicios a empresas</option>
-            <option>Consultorios médicos</option>
-            <option>Contabilidad</option>
-            <option>Contenido y noticias de negocios</option>
-            <option>Depósito y almacenamiento</option>
-            <option>Desarrollo comunitario y planificación urbana</option>
-            <option>Desarrollo de software</option>
-            <option>Desarrollo de software personalizado de sistemas de TI</option>
-            <option>Desarrollo y comercio internacional</option>
-            <option>Diseño gráfico</option>
-            <option>Edición de libros, periódicos y revistas</option>
-            <option>Edición de periódicos</option>
-            <option>Educación</option>
-            <option>Educación primaria y secundaria</option>
-            <option>Enseñanza superior</option>
-            <option>Entidades de capital riesgo y capital privado</option>
-            <option>Extracción de gas natural</option>
-            <option>Fabricación de alimentos y bebidas</option>
-            <option>Fabricación de bebidas</option>
-            <option>Fabricación de electrodomésticos y productos eléctricos y electrónicos</option>
-            <option>Fabricación de equipo médico</option>
-            <option>Fabricación de equipos informáticos</option>
-            <option>Fabricación de jabones y otros artículos de limpieza</option>
-            <option>Fabricación de maquinaria</option>
-            <option>Fabricación de maquinaria industrial</option>
-            <option>Fabricación de maquinaria industrial para comercio y servicios</option>
-            <option>Fabricación de maquinaria para minería, construcción y agricultura</option>
-            <option>Fabricación de maquinaria y equipos de energía renovable</option>
-            <option>Fabricación de motores y equipos de transmisión de energía</option>
-            <option>Fabricación de muebles y artículos para el hogar</option>
-            <option>Fabricación de ordenadores, periféricos y artículos electrónicos</option>
-            <option>Fabricación de productos de defensa y espacio</option>
-            <option>Fabricación de productos de vidrio, cerámica y cemento</option>
-            <option>Fabricación de productos farmacéuticos</option>
-            <option>Fabricación de productos químicos</option>
-            <option>Fabricación de productos químicos básicos</option>
-            <option>Fabricación de productos químicos para agricultura</option>
-            <option>Fabricación de productos textiles</option>
-            <option>Fabricación de vehículos de combustible alternativo</option>
-            <option>Fabricación de vehículos de motor</option>
-            <option>Formación y soporte de sistemas de TI</option>
-            <option>Fuerzas Armadas</option>
-            <option>Ganadería</option>
-            <option>Generación de energía eléctrica</option>
-            <option>Generación de energía eléctrica de biomasa</option>
-            <option>Generación de energía eléctrica de origen nuclear</option>
-            <option>Generación de energía eléctrica de origen térmico convencional</option>
-            <option>Generación de energía eléctrica eólica</option>
-            <option>Generación de energía eléctrica geotérmica</option>
-            <option>Generación de energía eléctrica solar</option>
-            <option>Generación de energía hidroeléctrica</option>
-            <option>Generación de energía renovable</option>
-            <option>Gestión de inversiones</option>
-            <option>Hospitales y atención sanitaria</option>
-            <option>Hostelería</option>
-            <option>Hoteles y moteles</option>
-            <option>Importación y exportación al por mayor</option>
-            <option>Industria manufacturera</option>
-            <option>Ingeniería civil</option>
-            <option>Ingeniería robótica</option>
-            <option>Instalación y eliminación de sistemas de TI</option>
-            <option>Instituciones religiosas</option>
-            <option>Inteligencia Artificial</option>
-            <option>Investigación biotecnológica</option>
-            <option>Investigación de mercado</option>
-            <option>Investigación de nanotecnología</option>
-            <option>Laboratorios de ideas (Think Tanks)</option>
-            <option>Laboratorios médicos y de diagnóstico</option>
-            <option>Mantenimiento de maquinaria comercial e industrial</option>
-            <option>Medicina alternativa</option>
-            <option>Médicos</option>
-            <option>Medios de audio y vídeo en línea</option>
-            <option>Medios de comunicación y telecomunicaciones</option>
-            <option>Medios de transporte turísticos</option>
-            <option>Mercados de capitales</option>
-            <option>Mercados de valores y de materias primas</option>
-            <option>Minería</option>
-            <option>Museos, sitios históricos y zoológicos</option>
-            <option>Noticias en línea</option>
-            <option>Oficinas de política pública</option>
-            <option>Oficinas ejecutivas</option>
-            <option>Oficinas legislativas</option>
-            <option>Operaciones y mantenimiento de sistemas de TI</option>
-            <option>Organización de viajes</option>
-            <option>Organizaciones comunitarias y sociales</option>
-            <option>Organizaciones de carácter político</option>
-            <option>Organizaciones sin ánimo de lucro</option>
-            <option>Petróleo y gas</option>
-            <option>Productos de redes informáticas</option>
-            <option>Productos de software de escritorio</option>
-            <option>Productos de software embebido</option>
-            <option>Productos de software para móviles</option>
-            <option>Programas de calidad medioambiental</option>
-            <option>Programas de gestión educativa</option>
-            <option>Programas de transporte</option>
-            <option>Proveedores de e-learning</option>
-            <option>Proveedores de entretenimiento</option>
-            <option>Prueba y evaluación de sistemas de TI</option>
-            <option>Quiroprácticos</option>
-            <option>Redacción y edición</option>
-            <option>Redes sociales/Medios sociales</option>
-            <option>Restauración</option>
-            <option>Salud pública</option>
-            <option>Salud y servicios sociales</option>
-            <option>Seguridad de redes y sistemas informáticos</option>
-            <option>Seguridad e investigación</option>
-            <option>Seguros</option>
-            <option>Servicios al consumidor</option>
-            <option>Servicios de alimentos y bebidas</option>
-            <option>Servicios de alquiler de bienes inmuebles y de equipos</option>
-            <option>Servicios de bienestar y mantenimiento físico</option>
-            <option>Servicios de conserjería</option>
-            <option>Servicios de datos de sistemas de TI</option>
-            <option>Servicios de diseño</option>
-            <option>Servicios de diseño de sistemas de TI</option>
-            <option>Servicios de gestión estratégica</option>
-            <option>Servicios de información</option>
-            <option>Servicios de ingeniería</option>
-            <option>Servicios de instalaciones</option>
-            <option>Servicios de investigación</option>
-            <option>Servicios de publicidad</option>
-            <option>Servicios de recursos humanos</option>
-            <option>Servicios de relaciones gubernamentales</option>
-            <option>Servicios de relaciones públicas y comunicaciones</option>
-            <option>Servicios de sistemas de seguridad</option>
-            <option>Servicios de transporte privado y para personas con necesidades especiales</option>
-            <option>Servicios de transporte urbano</option>
-            <option>Servicios de venta ambulante de comida</option>
-            <option>Servicios financieros</option>
-            <option>Servicios inalámbricos</option>
-            <option>Servicios jurídicos</option>
-            <option>Servicios para el individuo y la familia</option>
-            <option>Servicios para energías renovables</option>
-            <option>Servicios profesionales</option>
-            <option>Servicios públicos</option>
-            <option>Servicios veterinarios</option>
-            <option>Servicios y consultoría de TI</option>
-            <option>Sistemas de suministro de agua e irrigación</option>
-            <option>Software de seguridad de datos</option>
-            <option>Tecnología energética</option>
-            <option>Tecnología, información e internet</option>
-            <option>Tecnología, información y medios de comunicación</option>
-            <option>Telecomunicaciones</option>
-            <option>Traducción y localización</option>
-            <option>Transporte de mercancías y paquetes</option>
-            <option>Transporte marítimo</option>
-            <option>Transporte por tubería</option>
-            <option>Transporte terrestre de pasajeros</option>
-            <option>Transporte terrestre en camión</option>
-            <option>Transporte, logística, cadena de suministro y almacenamiento</option>
-            <option>Tribunales judiciales</option>
-            <option>Videojuegos</option>
-            <option>Zoológicos y jardines botánicos</option>
-          </select>
-          <p class="filters-hint">Lista completa de sectores de LinkedIn (español). Ctrl/Cmd + clic para elegir varios.</p>
-          <label for="filterIndustryExtra">Otros sectores (separados por coma)</label>
-          <input type="text" id="filterIndustryExtra" placeholder="Ej. Energía y minería, Transporte y logística" autocomplete="off">
-          <label for="filterCompany">Empresa actual</label>
-          <input type="text" id="filterCompany" placeholder="Empresa en la que trabaja hoy" autocomplete="off">
+          <label for="filterLocations">País / Ubicación</label>
+          <input type="text" id="filterLocations" placeholder="Ej. Mexico; España" autocomplete="off">
+          <label for="filterIndustries">Sector / Industria</label>
+          <input type="text" id="filterIndustries" list="industrySuggestions" placeholder="Ej. IT Services and IT Consulting; Technology, Information and Internet" autocomplete="off">
+          <datalist id="industrySuggestions">
+            <option value="IT Services and IT Consulting"></option>
+            <option value="Technology, Information and Internet"></option>
+          </datalist>
+          <p class="filters-hint">Varios valores separados por punto y coma (;). La "Empresa actual" se aplica siempre automáticamente con la empresa buscada.</p>
         </details>
         <button type="submit" id="searchBtn" class="btn-primary">Buscar empleados</button>
       </form>

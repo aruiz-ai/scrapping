@@ -38,5 +38,14 @@ PROFILE_LOOKUP_DELAY_MAX = 40
 PROFILE_LOAD_TIMEOUT_SECONDS = 45
 PROFILE_EXPERIENCE_WAIT_SECONDS = 15
 
+# Panel de filtros (calibrado en vivo, ritmo tranquilo): cada selección
+# escribe en el typeahead, espera a que aparezcan las opciones (~4 s) y
+# confirma el chip. Tras cada paso se deja asentar la UI.
+FILTER_ADD_DELAY = 3.0        # tras pulsar el botón "Add X" (abre el buscador)
+FILTER_TYPEAHEAD_DELAY = 4.0  # tras escribir: tiempo en aparecer las opciones
+FILTER_SELECT_DELAY = 4.0     # tras hacer clic en la opción (chip aplicado)
+FILTER_RETRY_DELAY = 2.0      # tras Escape cuando no hubo coincidencia
+FILTER_CLOSE_DELAY = 2.0      # tras cerrar el panel con Escape
+
 os.makedirs(DATA_DIR, exist_ok=True)
 os.makedirs(EXPORTS_DIR, exist_ok=True)

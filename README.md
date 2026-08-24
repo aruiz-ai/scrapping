@@ -6,6 +6,8 @@ indicada por el usuario y exporta sus datos a un archivo Excel.
 ## Qué hace
 
 - Búsqueda en LinkedIn People por nombre de empresa.
+- Filtros opcionales de país y sector; el filtro "Empresa actual" se aplica
+  siempre automáticamente con la empresa buscada.
 - Extrae de cada perfil: **Nombre**, **Cargo** y **URL del perfil**.
 - Genera un excel `.xlsx` con las columnas:
   `Nombre | Cargo | Correo | Número de teléfono | URL del perfil`
@@ -44,11 +46,12 @@ python -m playwright install chromium
    guardada en `data/storage_state.json` para futuros usos.
 4. Escribe el nombre de la empresa y el número máximo de páginas (10 resultados por
    página), o marca **Recorrer todas las páginas disponibles** para revisarlas todas.
-   Opcionalmente despliega **Filtros de LinkedIn** y rellena Cargo/Título, Sector y/o
-   Empresa actual para acotar la búsqueda (se aplican en el modal "Todos los filtros"
-   de LinkedIn). El sector admite varios valores: la lista contiene todos los sectores
-   que ofrece LinkedIn en español (Ctrl/Cmd + clic para elegir varios) o escribe otros
-   separados por coma. Pulsa **Buscar empleados**.
+   Opcionalmente despliega **Filtros de LinkedIn** y rellena País/Ubicación y/o
+   Sector/Industria (varios valores separados por punto y coma; el campo de sector
+   trae sugerencias con los dos valores recomendados). La "Empresa actual" se aplica
+   siempre automáticamente con la empresa buscada; todo se gestiona en el panel
+   "All filters" de LinkedIn, que aplica cada chip al instante. Pulsa
+   **Buscar empleados**.
 5. Mientras corre verás el progreso en vivo; al terminar usa **Descargar Excel (.xlsx)**.
 
 Los archivos generados quedan en `data/exports/`.
@@ -74,10 +77,11 @@ Los archivos generados quedan en `data/exports/`.
 
 - Si se caduca la sesión de LinkedIn, el proceso lo detecta y pide re-iniciar sesión.
 - LinkedIn cambia su DOM con frecuencia; los selectores están centralizados en
-  `scraper/selectors.py`. Si dejan de funcionar, ajusta ahí. Los del modal de
-  filtros se resuelven por rol/etiqueta accesible y placeholder (verificados en
-  vivo en 2026: "Cargo"/"Empresa" en Palabras clave, "Añadir sector" y
-  "Mostrar resultados").
+  `scraper/selectors.py`. Si dejan de funcionar, ajusta ahí. El panel de filtros
+  se resuelve por rol/etiqueta accesible y placeholder (verificados en vivo en
+  2026: botones "Add a location"/"Add an industry"/"Add a company", inputs
+  typeahead y opciones por primera línea); la paginación se hace con clic en el
+  botón Next dentro de la SPA, porque la URL no conserva los filtros.
 - **Aviso legal**: el scraping automatizado de LinkedIn puede violar sus términos de
   servicio. Esta herramienta está pensada para uso personal y a bajo volumen;
   LinkedIn puede bloquear la cuenta si detecta automatización intensiva.

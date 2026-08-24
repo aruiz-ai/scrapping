@@ -56,17 +56,16 @@ Paginación en `/api/search`:
   `ALL_PAGES_SAFETY_LIMIT`.
 
 Filtros de LinkedIn en `/api/search`:
-- Acepta un objeto opcional `filters` con claves `title`, `industry`, `company`
-  (Cargo/Título, Sector/Industria, Empresa actual). Se ignoran claves desconocidas
-  o valores vacíos. Se guardan en el job y se pasan al scraper, que los aplica en
-  el modal "Todos los filtros" de LinkedIn (ver `_apply_filters`).
-- El campo `title` acepta un único cargo (LinkedIn no soporta varios términos con
-  OR en ese campo; hay estrategias posibles a futuro, pero por ahora se usa uno solo).
-- El campo `industry` acepta **varios sectores**: el valor puede venir como lista
-  (JSON) o como texto separado por comas, punto y coma o `|`. `app.py` lo normaliza
-  y `_pick_industries` los aplica uno a uno, ya que LinkedIn sí permite varios
-  chips de sector (verificado en vivo: `industry=%5B%224%22%2C%2296%22%5D` para
-  "Desarrollo de software" + "Servicios y consultoría de TI").
+- Acepta un objeto opcional `filters` con claves `locations` (país/es) e
+  `industries` (sector/es). Cada valor puede venir como lista (JSON) o como texto
+  separado por coma/;/| (con comillas para valores que contengan coma); lo
+  normaliza `_normalize_list`. Se ignoran claves desconocidas o vacías. Si no
+  llega ningún filtro, ni siquiera se abre el panel de LinkedIn.
+- La clave `current_company` NO la envía el cliente: si hay algún filtro,
+  `app.py` inyecta SIEMPRE `filters["current_company"] = company`, para que el
+  scraper aplique el filtro "Empresa actual" con la propia empresa buscada.
+- El frontend separa varios valores con punto y coma (`;`) porque las industrias
+  recomendadas contienen comas ("Technology, Information and Internet").
 
 Detalles:
 - `_run_job` es el corazón de la búsqueda: recorre páginas, va actualizando el
@@ -89,6 +88,11 @@ Detalles:
   el tiempo total por página; `PAUSE_CHUNK_MIN/MAX` (8–25 s) trocean las pausas
   de relleno; `SCROLL_STEP` (300 px) y `SCROLL_STEP_DELAY_MIN/MAX` (0.4–0.9 s)
   controlan la velocidad del scroll gradual.
+- Panel de filtros (calibrado en vivo, ritmo tranquilo): `FILTER_ADD_DELAY` (3 s,
+  tras abrir el buscador con "Add X"), `FILTER_TYPEAHEAD_DELAY` (4 s, espera de
+  opciones), `FILTER_SELECT_DELAY` (4 s, tras confirmar el chip),
+  `FILTER_RETRY_DELAY` (2 s, tras Escape sin coincidencia) y
+  `FILTER_CLOSE_DELAY` (2 s, tras cerrar el panel).
 - Verificación de perfiles: `PROFILE_LOOKUP_DELAY_MIN/MAX` (20–40 s por perfil
   visitado), `PROFILE_LOAD_TIMEOUT_SECONDS` (45) y
   `PROFILE_EXPERIENCE_WAIT_SECONDS` (15).
@@ -119,12 +123,10 @@ Excepciones jerárquicas:
 |---|---|
 | `scrape` / `login` | Wrappers que ejecutan la versión asíncrona con `asyncio.run`. |
 | `_open` | Lanza Chromium **con ventana visible** (necesario para que el usuario haga login), con user-agent real, locale `es-ES` y timezone MX; oculta que es un navegador automatizado. Si existe `storage_state.json`, lo reutiliza como sesión. |
-| `_scrape` | Recorre página por página de `/search/results/people/?keywords=...`. Si `max_pages > 0`, recorre hasta esa página; si es `0` (modo "todas las páginas"), itera hasta agotar resultados o llegar a `ALL_PAGES_SAFETY_LIMIT`. En la página 1, si hay `filters`, llama a `_apply_filters` y reutiliza la URL resultante (`_strip_page_param`) como base de paginación para que las páginas siguientes conserven los filtros. Por página: verifica interrupciones (captcha/authwall), espera tarjetas de resultado, hace scroll gradual, extrae datos y llama a `progress()` para notificar al job. Dedup de resultados acumulado y **pacing por página**: mide el tiempo real de la página y lo completa hasta un objetivo sorteado de 1–3 min (`PAGE_MIN_SECONDS`/`PAGE_MAX_SECONDS`) con pausas en trozos (`_pace_page`), así cada página tarda entre 1 y 3 minutos sumando todas sus actividades. |
-| `_apply_filters` | Abre el modal "Todos los filtros" y aplica los filtros dados (cargo, empresa, sector). Cada filtro se aplica con `try/except`: si un selector falla se continúa con el resto (o sin filtros), para no tumbar la búsqueda. |
-| `_fill_text_field` | Rellena un campo de texto de la sección "Palabras clave" del modal (Cargo, Empresa). |
-| `_pick_industries` | Divide el valor de sector (con `_split_sectors`) en varios y llama a `_pick_industry` por cada uno. |
-| `_pick_industry` | Asegura el buscador "Añadir sector" abierto (lo abre si la búsqueda anterior lo cerró), escribe y selecciona la opción (`role="option"`) que coincide con el texto; si no hay coincidencia, se omite ese sector. |
-| `_strip_page_param` | Quita el parámetro `page=N` de una URL (para usarla como base de paginación con filtros ya aplicados). |
+| `_scrape` | Recorre página por página de `/search/results/people/?keywords=...`. La página 1 se abre por URL; las siguientes SIEMPRE con clic en Next dentro de la SPA (`_go_to_next_page`): la URL no conserva los filtros del panel 2026 (estado puramente cliente) y `goto(...&page=N)` los pierde. Si `max_pages > 0`, recorre hasta esa página; si es `0` (modo "todas las páginas"), itera hasta agotar resultados o llegar a `ALL_PAGES_SAFETY_LIMIT`. En la página 1, si hay `filters`, llama a `_apply_filters` y extrae directamente de los resultados ya filtrados. Por página: verifica interrupciones (captcha/authwall), espera tarjetas de resultado, hace scroll gradual, extrae datos y llama a `progress()` para notificar al job. Dedup de resultados acumulado y **pacing por página**: mide el tiempo real de la página y lo completa hasta un objetivo sorteado de 1–3 min (`PAGE_MIN_SECONDS`/`PAGE_MAX_SECONDS`) con pausas en trozos (`_pace_page`). |
+| `_go_to_next_page` | Clic en el botón de página siguiente DENTRO de la SPA, con estrategia dual: data-test-id legacy (`NEXT_PAGE_LEGACY`) + rol/nombre `^(next\|siguiente)$` (`NEXT_PAGE_FALLBACK`). Devuelve False (fin del recorrido) si no hay botón visible o está deshabilitado; tras el clic deja 5–9 s a que la SPA cargue. Verificado en vivo (2026): tras el clic la URL sí se actualiza (`...&page=N...`) y los resultados siguen filtrados. |
+| `_apply_filters` | Abre el panel inline "All filters" y aplica `{locations: [], industries: [], current_company: ""}` como chips typeahead vía `_pick_combo`. El panel 2026 aplica cada selección AL INSTANTE (no hay botón Apply; el Submit interno está oculto y deshabilitado); al terminar se cierra con Escape y los resultados quedan filtrados detrás. Cada bloque tiene try/except independiente para que un fallo de un filtro no tumbe la búsqueda. |
+| `_pick_combo` | Helper genérico de combo calibrado en vivo: pulsa el botón "Add X" si sigue visible (desaparece tras el primer chip de su sección), clic + fill del input typeahead, espera ~4 s y hace clic en la opción `[role=option]` cuya PRIMERA LÍNEA coincide exactamente en minúsculas (las opciones de empresa traen texto compuesto tipo "Google \|  \| Software Development"). Sin coincidencia, pulsa Escape para cerrar el desplegable sin contaminar la siguiente selección. Timings en config (`FILTER_*_DELAY`). |
 | `_login` | Abre el feed; si ya existe la cookie `li_at`, guarda el estado y termina (`ya_autenticado`). Si no, abre la página de login y espera (hasta 5 min) a que el **usuario escriba sus credenciales a mano**; al detectar la cookie guarda `storage_state.json`. |
 | `_extract_results` | Por tarjeta extrae nombre, URL (`/in/...`) y cargo usando los selectores centralizados. El cargo se decide así: si el snippet es del tipo **"Actual: \<puesto\> en \<empresa\>"** se limpia con `clean_position` (confianza total); si el snippet falta o tiene otro prefijo ("Anterior:", "Educación:", texto libre), se **verifica en el perfil** con `_lookup_current_role` (abre el perfil en una pestaña aparte, lee la experiencia actual y solo acepta el puesto si la empresa coincide con la buscada; añade una demora de 20–40 s por visita). Si la verificación no da resultado, se conserva el cargo del subtítulo. |
 | `clean_position` | Convierte `"Actual: Desarrollador CLOUD en VCSOFT"` → `"Desarrollador CLOUD"` (quita lo previo a `:` y lo posterior a ` en ` / ` at `). Solo se aplica cuando `_snippet_is_current` confirma que el snippet empieza con "Actual:"/"Current:". |
@@ -142,12 +144,17 @@ LinkedIn cambia su DOM con frecuencia (clases con hash que rotan). Los selectore
 están anclados a atributos semánticos estables (`div[role='listitem']`, enlaces
 con `/in/`). Si el scraping deja de funcionar, se ajusta aquí en un solo lugar.
 
-Para el modal "Todos los filtros" los selectores se resuelven **por rol/etiqueta
-accesible y placeholder** (`get_by_role`, `input[placeholder]`), no por clases
-CSS, porque LinkedIn rota las clases. Verificado en vivo (2026): el modal usa
-inputs de texto "Cargo" y "Empresa" (sección "Palabras clave"), un botón
-"Añadir sector" con buscador de opciones, y un enlace "Mostrar resultados" para
-confirmar. Si LinkedIn los cambia, se ajustan aquí.
+El panel de filtros 2026 ya NO es un modal (`div[role=dialog]`/`.artdeco-modal`
+desaparecieron): es un panel inline que se abre con el botón "All filters" y
+aplica cada filtro AL INSTANTE como chip (sin botón Apply). Los selectores se
+resuelven **por rol/etiqueta accesible y placeholder** (`get_by_role`,
+`input[placeholder]`), bilingües EN/ES, no por clases CSS, porque LinkedIn rota
+las clases: botones "Add a location"/"Añadir ubicación",
+"Add an industry"/"Añadir sector" y "Add a company"/"Añadir empresa"; inputs
+typeahead por placeholder (`ocation|ubicaci`, `ndustry|sector`, `ompany|empresa`);
+opciones `[role=option]`; cierre del panel con Escape. La paginación usa
+estrategia dual: `[data-test-id='pagination-next-page']` (legacy) + botón
+Next/Siguiente por rol/nombre. Si LinkedIn los cambia, se ajustan aquí.
 
 La sección Experiencia del perfil (para la verificación de puesto) usa
 `EXPERIENCE_SECTION`: en el DOM 2026 el card se ancla a un id que contiene
@@ -166,12 +173,12 @@ del card. Verificado en vivo (2026).
 ### `templates/index.html` + `static/app.js` — Frontend
 
 - El HTML: formulario (empresa + máx. páginas con opción "todas las páginas" +
-  sección desplegable **Filtros de LinkedIn opcional** con Cargo/Título, Sector y
-  Empresa actual), banner de estado de sesión, tarjeta de progreso (página
+  sección desplegable **Filtros de LinkedIn opcional** con País/Ubicación y
+  Sector/Industria), banner de estado de sesión, tarjeta de progreso (página
   actual, encontrados, barra), caja de errores, tabla de resultados y botón de
-  descarga. El sector se elige con un `<select multiple>` que incluye la **taxonomía
-  completa de sectores de LinkedIn en español** (~188, barridos del typeahead en vivo)
-  más un campo libre para otros separados por coma.
+  descarga. Los sectores sugeridos van en un `<datalist>` con los dos valores
+  recomendados ("IT Services and IT Consulting", "Technology, Information and
+  Internet"); la "Empresa actual" no existe como campo: la inyecta el backend.
 - El JS hace:
   - Polling del estado de login (`pollLogin`, cada 1.5s).
   - Polling del job (`startJob`, cada 1.5s) y renderizado en vivo.
@@ -181,8 +188,10 @@ del card. Verificado en vivo (2026).
   - Enlaza el botón de descarga a `/api/jobs/<id>/download`.
   - Bloquea el formulario mientras hay una búsqueda en curso.
   - Deshabilita el input de páginas cuando el checkbox "todas las páginas" está activo.
-  - Envía los filtros rellenos en el payload como `filters`. `industry` se envía
-    como **lista** (sectores del `<select multiple>` + los del campo libre).
+  - Envía los filtros rellenos en el payload como `filters.locations` y
+    `filters.industries`, ambas como **listas** (divide por `;`, `|` o salto de
+    línea con `splitList`; NO divide por coma para no romper nombres que la
+    contienen).
 
 ## Flujo detallado de una búsqueda
 
@@ -192,15 +201,18 @@ del card. Verificado en vivo (2026).
    `data/storage_state.json`.
 2. El usuario rellena empresa, elige el máximo de páginas o marca **Recorrer todas
    las páginas disponibles**, y opcionalmente rellena los **Filtros de LinkedIn**
-   (título, sectores —uno o varios—, empresa actual). Pulsa **Buscar empleados** →
-   `POST /api/search` valida, crea el job y devuelve `{ job_id }`.
-3. `_run_job` ejecuta `scraper.scrape()`; en la página 1 aplica los filtros en el
-   modal "Todos los filtros" de LinkedIn y usa la URL filtrada como base de
-   paginación. Cada página llama a `progress()`, que actualiza `current_page` y va
-   acumulando resultados deduplicados. El cargo se toma del snippet "Actual: ..."
-   cuando existe; si no, se verifica visitando el perfil (pestaña aparte, solo si
-   la empresa coincide con la buscada, +20–40 s por visita) y la página regresa
-   sola a los resultados para continuar.
+   (país y sectores, separados por `;`). Pulsa **Buscar empleados** →
+   `POST /api/search` valida, crea el job (con `current_company` inyectada si hay
+   filtros) y devuelve `{ job_id }`.
+3. `_run_job` ejecuta `scraper.scrape()`; en la página 1 aplica los filtros como
+   chips en el panel "All filters" de LinkedIn, cierra el panel con Escape y
+   extrae los resultados ya filtrados. Las páginas siguientes se recorren con
+   clic en el botón Next dentro de la SPA (la URL no conserva los filtros).
+   Cada página llama a `progress()`, que actualiza `current_page` y va
+   acumulando resultados deduplicados. El cargo se toma del snippet
+   "Actual: ..." cuando existe; si no, se verifica visitando el perfil
+   (pestaña aparte, solo si la empresa coincide con la buscada, +20–40 s por
+   visita) y la página regresa sola a los resultados para continuar.
 4. Al terminar, `export_to_excel` genera el `.xlsx` y el job pasa a `done` con
    `filepath` y `filename`.
 5. El botón **Descargar Excel** enlaza a `GET /api/jobs/<id>/download`.

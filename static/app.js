@@ -196,6 +196,13 @@ function startJob(jobId) {
   }, POLL_INTERVAL);
 }
 
+function splitList(text) {
+  return String(text || "")
+    .split(/[;|\n]+/)
+    .map((s) => s.replace(/\s+/g, " ").trim())
+    .filter(Boolean);
+}
+
 form.addEventListener("submit", async (event) => {
   event.preventDefault();
   setError(null);
@@ -214,22 +221,10 @@ form.addEventListener("submit", async (event) => {
     : { company, max_pages: maxPages };
 
   const filters = {};
-  const filterTitle = $("filterTitle").value.trim();
-  const filterCompany = $("filterCompany").value.trim();
-  const filterIndustrySelect = $("filterIndustry");
-  const filterIndustryExtra = $("filterIndustryExtra").value.trim();
-  const industries = Array.from(filterIndustrySelect.selectedOptions)
-    .map((opt) => opt.value.trim())
-    .filter(Boolean);
-  if (filterIndustryExtra) {
-    filterIndustryExtra.split(",").forEach((s) => {
-      const part = s.trim();
-      if (part) industries.push(part);
-    });
-  }
-  if (filterTitle) filters.title = filterTitle;
-  if (industries.length) filters.industry = industries;
-  if (filterCompany) filters.company = filterCompany;
+  const locations = splitList($("filterLocations").value);
+  const industries = splitList($("filterIndustries").value);
+  if (locations.length) filters.locations = locations;
+  if (industries.length) filters.industries = industries;
   if (Object.keys(filters).length) payload.filters = filters;
 
   searchBtn.disabled = true;

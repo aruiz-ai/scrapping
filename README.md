@@ -109,6 +109,38 @@ el login de LinkedIn en el servidor.
   docker compose up -d --build
   ```
 
+## Límites anti-detección
+
+La aplicación se auto-limita para imitar uso personal a bajo volumen. Todos los
+valores son configurables en `config.py` (bloque "Límites anti-detección").
+
+- **Páginas por búsqueda**: máximo 25 en la UI; el modo "todas las páginas"
+  comparte ese mismo techo de emergencia.
+- **Ritmo**: cada página tarda 3–5 min (carga, scroll y pausas de lectura).
+- **Sesión continua**: máximo 60 min de actividad por job; al llegar al límite
+  corta tras terminar la página en curso y exporta lo acumulado. Las pausas
+  largas entre bloques de perfiles NO consumen este tiempo.
+- **Perfiles visitados**: en bloques de 15, con pausa aleatoria de 5–15 min
+  entre bloques; tope duro de 70 visitas/día. Si el tope se agota a mitad de
+  búsqueda, los perfiles restantes quedan con el cargo sin verificar y el job
+  termina igual (el mensaje final lo indica).
+- **Cooldown**: hay que esperar 2 h desde el fin de una búsqueda para lanzar
+  otra; fuera de eso la API responde cuándo estará disponible.
+- **Horario**: solo se pueden INICIAR búsquedas entre las 8:00 y las 21:00
+  (hora del servidor). Varía tú la hora exacta dentro de la franja: el timing
+  fijo diario es tan detectable como el volumen.
+
+El contador diario vive en `data/usage_state.json` y sobrevive a reinicios del
+contenedor. El uso manual de LinkedIn no es rastreable por la app: si navegas
+LinkedIn a mano el mismo día, suma esas visitas editando la entrada de la fecha
+en ese archivo. Con Premium tienes más margen oficial, pero el límite real lo
+pone el patrón de comportamiento, no la cuota.
+
+Además, cada ejecución rota fingerprint (user-agent Windows/macOS + tamaño de
+ventana aleatorios, stealth completo vía playwright-stealth) y un circuit
+breaker corta el job al detectar mensajes de restricción de uso comercial,
+límites alcanzados o cuenta restringida, igual que ya hacía con captcha/authwall.
+
 ## Estructura
 
 ```

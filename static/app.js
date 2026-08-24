@@ -21,9 +21,37 @@ const previewNote = $("previewNote");
 const resultsBody = $("resultsBody");
 const maxPagesInput = $("maxPages");
 const allPagesCheckbox = $("allPages");
+const empresaInput = $("empresa");
+const labelEmpresa = $("labelEmpresa");
 
 allPagesCheckbox.addEventListener("change", () => {
   maxPagesInput.disabled = allPagesCheckbox.checked;
+});
+
+// --- Pestañas ---
+const tabLinks = document.querySelectorAll(".tab-link");
+tabLinks.forEach((link) => {
+  link.addEventListener("click", () => {
+    // Remover clase active de todos los links
+    tabLinks.forEach((l) => l.classList.remove("active"));
+    // Añadir clase active al hecho clic
+    link.classList.add("active");
+
+    const tab = link.dataset.tab;
+    if (tab === "candidatos") {
+      // Cambiar el campo de empresa por tecnologías
+      labelEmpresa.textContent = "Tecnologías o habilidades";
+      empresaInput.placeholder = "Ej. JavaScript, Python, AWS, Docker";
+      empresaInput.name = "tecnologias"; // Ajustar nombre para el payload
+    } else {
+      // Restaurar campo de empresa
+      labelEmpresa.textContent = "Nombre de la empresa";
+      empresaInput.placeholder = "Ej. Google, Microsoft, Mercado Libre...";
+      empresaInput.name = "company";
+    }
+    // Forzar foco en el input
+    empresaInput.focus();
+  });
 });
 
 function setError(message) {
@@ -214,11 +242,23 @@ form.addEventListener("submit", async (event) => {
     return;
   }
 
-  const company = $("company").value.trim();
+  // Determinar el valor y nombre del campo según la pestaña activa
+  const tabActivo = document.querySelector(".tab-link.active").dataset.tab;
+  let companyValue = $("empresa").value.trim();
+  let payloadCompany = companyValue;
+
+  if (tabActivo === "candidatos") {
+    // En la pestaña Candidatos, el campo contiene tecnologías; lo enviamos
+    // como "company" para compatibilidad con el backend, pero el usuario
+    // sabe que debe poner palabras clave de tecnología.
+    empresaInput.name = "company"; // asegurar nombre consistente
+    payloadCompany = empresaInput.placeholder; // usar el placeholder como valor de búsqueda
+  }
+
   const maxPages = parseInt(maxPagesInput.value, 10) || 10;
   const payload = allPagesCheckbox.checked
-    ? { company, all_pages: true }
-    : { company, max_pages: maxPages };
+    ? { company: payloadCompany, all_pages: true }
+    : { company: payloadCompany, max_pages: maxPages };
 
   const filters = {};
   const locations = splitList($("filterLocations").value);

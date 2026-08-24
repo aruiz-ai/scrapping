@@ -225,3 +225,34 @@ del card. Verificado en vivo (2026).
 - **Aviso legal**: el scraping automatizado de LinkedIn puede violar sus términos
   de servicio. Está pensado para uso personal y a bajo volumen; LinkedIn puede
   bloquear la cuenta si detecta automatización intensiva.
+
+## Límites anti-detección (2026-08)
+
+Valores en `config.py`, bloque "Límites anti-detección". Objetivo: imitar uso
+personal a bajo volumen y parar ante cualquier fricción nueva.
+
+| Límite | Valor | Dónde se aplica |
+|---|---|---|
+| Pacing por página | 3–5 min (`PAGE_MIN/MAX_SECONDS`) | `_pace_page` |
+| Máx. páginas por job (UI) | 25 (`MAX_PAGES_LIMIT`) | `app.py` + input `maxPages` |
+| Techo "todas las páginas" | 25 (`ALL_PAGES_SAFETY_LIMIT`) | `_scrape` |
+| Sesión continua máx. | 60 min de tiempo ACTIVO (`SESSION_MAX_ACTIVE_SECONDS`); las pausas largas de bloque NO cuentan, el pacing sí | `_ActiveClock` en `_scrape`; corta tras completar la página en curso y exporta parcial |
+| Visitas a perfil | Bloques de 15 + pausa aleatoria 5–15 min entre bloques | `_extract_results` |
+| Tope diario de visitas a perfil | 70/día (`DAILY_PROFILE_LOOKUP_LIMIT`), persistente; al agotarse se saltan las restantes (cargo sin verificar) | `usage.py` + `_extract_results` |
+| Cooldown entre ejecuciones | 2 h desde el fin del último job (`COOLDOWN_HOURS`) | `usage.can_start_search()` → HTTP 429 |
+| Ventana horaria de arranque | 8:00–21:00 hora del servidor (`ALLOWED_START/END_HOUR`) | `usage.can_start_search()` → HTTP 429 |
+
+- Estado de uso: `data/usage_state.json` (`profile_lookups` por fecha,
+  `last_run_start/end`). Vive en el volumen Docker. El uso manual de LinkedIn
+  no es rastreable: sumarlo a mano a la entrada del día.
+- Fingerprint: persona (UA Chrome/151 Win32/macOS) y viewport con jitter
+  elegidos al azar POR ejecución (`VIEWPORT_*_RANGE`); locale/timezone fijos.
+  Init script alinea `navigator.platform` y `userAgentData` con la persona
+  (en Docker dirían Linux). playwright-stealth v2 se aplica al contexto;
+  si no está disponible, siguen funcionando los parches propios.
+- Circuit breaker: además de captcha/authwall, `_check_restriction_text`
+  escanea el texto visible contra `RESTRICTION_TEXT_PATTERNS`
+  (restricción de uso comercial, límites alcanzados, cuenta restringida) y
+  aborta con `RestrictionError` (job en `error`).
+- El mensaje final del job informa de cortes de sesión y perfiles sin
+  verificar (`stats` que rellena `_scrape`).

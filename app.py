@@ -5,12 +5,14 @@ import threading
 from flask import Flask, jsonify, render_template, request, send_file
 
 import config
+import usage
 from excel_writer import export_to_excel
 from jobs import JobManager
 from scraper.linkedin import (
     AuthWallError,
     CaptchaError,
     LoginRequiredError,
+    RestrictionError,
     ScraperError,
     LinkedInScraper,
 )
@@ -89,6 +91,12 @@ def api_search():
     if not company:
         return jsonify({"error": "El nombre de la empresa es obligatorio."}), 400
 
+    # Límites anti-detección: ventana horaria y cooldown entre ejecuciones.
+    # Solo aplican al INICIAR; un job en marcha no se interrumpe por ellos.
+    allowed, reason = usage.can_start_search()
+    if not allowed:
+        return jsonify({"error": reason}), 429
+
     all_pages = bool(data.get("all_pages"))
     if all_pages:
         max_pages = 0
@@ -115,6 +123,8 @@ def api_search():
     if not os.path.exists(config.STORAGE_STATE_PATH):
         return jsonify({"error": "Necesitas iniciar sesión en LinkedIn primero."}), 401
 
+    daily_budget = usage.remaining_daily_lookups()
+    usage.record_run_start()
     job = jobs.create(company, max_pages, all_pages=all_pages, filters=filters)
     threading.Thread(
         target=_run_job,
@@ -124,13 +134,14 @@ def api_search():
             "all_pages": all_pages,
             "filters": filters,
             "job_id": job["id"],
+            "daily_budget": daily_budget,
         },
         daemon=True,
     ).start()
     return jsonify({"job_id": job["id"]})
 
 
-def _run_job(company, max_pages, all_pages, filters, job_id):
+def _run_job(company, max_pages, all_pages, filters, job_id, daily_budget=None):
     jobs.update(job_id, status="running", message="Iniciando búsqueda en LinkedIn...")
 
     def progress(page_no, found, results):
@@ -146,24 +157,57 @@ def _run_job(company, max_pages, all_pages, filters, job_id):
         )
         jobs.append_results(job_id, results)
 
+    def on_usage(count):
+        # Persiste cada visita a perfil al instante: si el proceso muere,
+        # el tope diario ya contabiliza lo visitado.
+        try:
+            usage.add_profile_lookups(count)
+        except Exception:
+            pass
+
+    stats = {}
     try:
         rows = scraper.scrape(
             company=company,
             progress=progress,
             max_pages=max_pages,
             filters=filters,
+            daily_lookup_budget=daily_budget,
+            on_usage=on_usage,
+            stats=stats,
         )
         jobs.append_results(job_id, rows)
+        notes = []
+        if stats.get("cut_by_session"):
+            notes.append(
+                f"sesión cortada por límite de "
+                f"{config.SESSION_MAX_ACTIVE_SECONDS // 60} min de actividad"
+            )
+        if stats.get("skipped_daily"):
+            notes.append(
+                f"{stats['skipped_daily']} perfiles sin verificar por tope diario"
+            )
+        suffix = f" ({'; '.join(notes)})" if notes else ""
         if not rows:
-            jobs.update(job_id, status="done", message="No se encontraron empleados.")
+            jobs.update(
+                job_id, status="done", message="No se encontraron empleados." + suffix
+            )
             return
         filepath, filename = export_to_excel(rows, company=company)
         jobs.update(
             job_id,
             status="done",
-            message=f"Scraping completado. {len(rows)} empleados encontrados.",
+            message=(
+                f"Scraping completado. {len(rows)} empleados encontrados." + suffix
+            ),
             filepath=filepath,
             filename=filename,
+        )
+    except RestrictionError as error:
+        jobs.update(
+            job_id,
+            status="error",
+            error=f"LinkedIn señalizó una restricción de uso: {error}",
         )
     except LoginRequiredError:
         jobs.update(
@@ -183,6 +227,8 @@ def _run_job(company, max_pages, all_pages, filters, job_id):
         jobs.update(
             job_id, status="error", error=f"Error inesperado: {error}"
         )
+    finally:
+        usage.record_run_end()
 
 
 @app.get("/api/jobs/<job_id>")

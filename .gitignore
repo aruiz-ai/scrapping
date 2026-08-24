@@ -5,3 +5,4 @@ venv/
 .venv/
 data/storage_state.json
 data/exports/
+data/usage_state.json

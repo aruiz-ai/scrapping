@@ -23,6 +23,27 @@
       margin-bottom: 20px;
     }
     .hidden { display: none !important; }
+    .tabs { display: flex; gap: 12px; margin: 20px 0; }
+    .tab-link {
+      flex: 1;
+      padding: 10px 0;
+      border-radius: 8px 8px 0 0;
+      border: 1px solid #dee2e6;
+      background: #fff;
+      color: #495057;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.2s, color 0.2s;
+    }
+    .tab-link.active {
+      background: #0a66c2;
+      color: #fff;
+      border-color: #0a66c2;
+    }
+    .tab-link:not(.active):hover {
+      background: #e9f0f8;
+      color: #0a66c2;
+    }
     label { display: block; font-weight: 600; margin: 12px 0 4px; }
     input[type=text], input[type=number] {
       width: 100%;
@@ -92,11 +113,15 @@
     <div id="authBanner" class="banner banner-warn hidden"></div>
 
     <div class="card">
+      <div class="tabs">
+        <button class="tab-link active" data-tab="contactos">Contactos</button>
+        <button class="tab-link" data-tab="candidatos">Candidatos</button>
+      </div>
       <form id="searchForm">
-        <label for="company">Nombre de la empresa</label>
-        <input type="text" id="company" placeholder="Ej. Google, Microsoft, Mercado Libre..." required autocomplete="off">
+        <label for="empresa" id="labelEmpresa">Nombre de la empresa</label>
+        <input type="text" id="empresa" placeholder="Ej. Google, Microsoft, Mercado Libre..." required autocomplete="off">
         <label for="maxPages">Máximo de páginas a recorrer (10 resultados por página)</label>
-        <input type="number" id="maxPages" value="10" min="1" max="100">
+        <input type="number" id="maxPages" value="10" min="1" max="25">
         <label class="checkbox-label">
           <input type="checkbox" id="allPages"> Recorrer todas las páginas disponibles
         </label>

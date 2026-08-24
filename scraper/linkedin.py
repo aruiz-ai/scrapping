@@ -8,14 +8,36 @@ from urllib.parse import quote_plus
 
 from playwright.async_api import async_playwright
 
+try:  # playwright-stealth v2: refuerzo del fingerprint (plugins, WebGL, etc.)
+    from playwright_stealth import Stealth
+except Exception:  # pragma: no cover - si no está instalado, siguen los parches propios
+    Stealth = None
+
 import config
 from scraper import selectors
 
-USER_AGENT = (
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-    "AppleWebKit/537.36 (KHTML, like Gecko) "
-    "Chrome/151.0.0.0 Safari/537.36"
-)
+# Personas de fingerprint: se elige una al azar por ejecución. El major de
+# Chrome coincide SIEMPRE con el motor real (Chromium 151); solo rota el SO.
+_PERSONAS = [
+    {
+        "user_agent": (
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+            "AppleWebKit/537.36 (KHTML, like Gecko) "
+            "Chrome/151.0.0.0 Safari/537.36"
+        ),
+        "platform": "Win32",
+        "platform_version": "15.1.0",
+    },
+    {
+        "user_agent": (
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+            "AppleWebKit/537.36 (KHTML, like Gecko) "
+            "Chrome/151.0.0.0 Safari/537.36"
+        ),
+        "platform": "MacIntel",
+        "platform_version": "14.6.0",
+    },
+]
 
 
 class ScraperError(Exception):
@@ -32,6 +54,39 @@ class AuthWallError(ScraperError):
 
 class CaptchaError(ScraperError):
     pass
+
+
+class RestrictionError(ScraperError):
+    """LinkedIn señalizó restricción de uso comercial o fricción nueva."""
+
+
+class _ActiveClock:
+    """Reloj de tiempo activo de la sesión.
+
+    La medición se puede congelar (pausas largas entre bloques de perfiles):
+    ese tiempo NO cuenta para el límite de sesión; el pacing normal sí.
+    """
+
+    def __init__(self):
+        self._started = time.monotonic()
+        self._frozen_total = 0.0
+        self._freeze_mark = None
+
+    def pause(self):
+        if self._freeze_mark is None:
+            self._freeze_mark = time.monotonic()
+
+    def resume(self):
+        if self._freeze_mark is not None:
+            self._frozen_total += time.monotonic() - self._freeze_mark
+            self._freeze_mark = None
+
+    def active_seconds(self):
+        total = time.monotonic() - self._started - self._frozen_total
+        if self._freeze_mark is not None:
+            # Congelación en curso: tampoco cuenta el tramo hasta ahora.
+            total -= time.monotonic() - self._freeze_mark
+        return total
 
 
 class LinkedInScraper:
@@ -203,14 +258,58 @@ class LinkedInScraper:
         finally:
             await profile_page.close()
 
-    def scrape(self, company, progress, max_pages, filters=None):
-        return asyncio.run(self._scrape(company, progress, max_pages, filters))
+    def scrape(
+        self,
+        company,
+        progress,
+        max_pages,
+        filters=None,
+        daily_lookup_budget=None,
+        on_usage=None,
+        stats=None,
+    ):
+        return asyncio.run(
+            self._scrape(
+                company,
+                progress,
+                max_pages,
+                filters,
+                daily_lookup_budget=daily_lookup_budget,
+                on_usage=on_usage,
+                stats=stats,
+            )
+        )
 
     def login(self, timeout_seconds=None):
         return asyncio.run(self._login(timeout_seconds or config.LOGIN_TIMEOUT_SECONDS))
 
-    async def _scrape(self, company, progress, max_pages, filters=None):
+    async def _scrape(
+        self,
+        company,
+        progress,
+        max_pages,
+        filters=None,
+        daily_lookup_budget=None,
+        on_usage=None,
+        stats=None,
+    ):
+        stats = stats if stats is not None else {}
+        budget = (
+            config.DAILY_PROFILE_LOOKUP_LIMIT
+            if daily_lookup_budget is None
+            else max(0, int(daily_lookup_budget))
+        )
+        ctx = {
+            "budget_left": budget,   # presupuesto diario de visitas a perfil
+            "lookups_done": 0,       # visitas hechas en este job
+            "skipped_daily": 0,      # perfiles saltados por tope diario
+            "since_pause": 0,        # visitas desde la última pausa larga
+            "on_usage": on_usage,
+            "clock": _ActiveClock(),
+        }
         browser, context, page = await self._open()
+        cut_by_session = False
+        pages_done = 0
         try:
             first_url = (
                 f"{config.LINKEDIN_SEARCH_URL}?keywords={quote_plus(company)}"
@@ -257,19 +356,34 @@ class LinkedInScraper:
                     await self._scroll_gradually(page)
                     await self._check_interruptions(page)
 
-                page_results = await self._extract_results(page, company)
+                page_results = await self._extract_results(page, company, ctx)
                 new_on_page = self._new_items(page_results, all_results)
                 all_results.extend(new_on_page)
 
                 progress(page_no, len(all_results), all_results)
+                pages_done += 1
 
                 if not page_results or not new_on_page:
                     break
                 # Ritmo humano: completa la página hasta el objetivo de
-                # 1-3 min (config) con pausas repartidas en trozos.
+                # 3-5 min (config) con pausas repartidas en trozos.
                 await self._pace_page(time.monotonic() - page_started)
+                # Límite de sesión activa: corta tras completar la página en
+                # curso y devuelve lo acumulado (las pausas largas de bloque
+                # no cuentan; el reloj las tiene congeladas).
+                if ctx["clock"].active_seconds() >= config.SESSION_MAX_ACTIVE_SECONDS:
+                    cut_by_session = True
+                    break
             return all_results
         finally:
+            stats.update(
+                {
+                    "pages_done": pages_done,
+                    "cut_by_session": cut_by_session,
+                    "lookups_done": ctx["lookups_done"],
+                    "skipped_daily": ctx["skipped_daily"],
+                }
+            )
             await browser.close()
             await self._pw.stop()
 
@@ -441,18 +555,49 @@ class LinkedInScraper:
             args=launch_args,
             ignore_default_args=["--enable-automation"],
         )
+        # Fingerprint rotativo: persona (UA+plataforma) y viewport con jitter,
+        # distintos en cada ejecución. Locale/timezone se mantienen fijos:
+        # son la identidad estable de la cuenta.
+        persona = random.choice(_PERSONAS)
         context = await browser.new_context(
             storage_state=config.STORAGE_STATE_PATH
             if os.path.exists(config.STORAGE_STATE_PATH)
             else None,
-            user_agent=USER_AGENT,
-            viewport={"width": 1366, "height": 900},
+            user_agent=persona["user_agent"],
+            viewport={
+                "width": random.randint(*config.VIEWPORT_WIDTH_RANGE),
+                "height": random.randint(*config.VIEWPORT_HEIGHT_RANGE),
+            },
             locale="es-ES",
             timezone_id="America/Mexico_City",
         )
-        await context.add_init_script(
-            "Object.defineProperty(navigator, 'webdriver', {get: () => undefined})"
+        if Stealth is not None:
+            try:
+                await Stealth().apply_stealth_async(context)
+            except Exception:
+                pass
+        # Alinea las superficies JS que el contenedor/Linux deja incoherentes
+        # con el UA elegido (en Docker navigator.platform diría Linux).
+        init_script = """
+            Object.defineProperty(navigator, 'webdriver', {get: () => undefined});
+            Object.defineProperty(navigator, 'platform', {get: () => '__PLATFORM__'});
+            try {
+                const uad = navigator.userAgentData;
+                if (uad) {
+                    Object.defineProperty(uad, 'platform', {get: () => '__PLATFORM__'});
+                    const origHighEntropy = uad.getHighEntropyValues.bind(uad);
+                    uad.getHighEntropyValues = async (hints) => {
+                        const values = await origHighEntropy(hints);
+                        if ('platform' in values) values.platform = '__PLATFORM__';
+                        if ('platformVersion' in values) values.platformVersion = '__PLATFORM_VERSION__';
+                        return values;
+                    };
+                }
+            } catch (error) {}
+        """.replace("__PLATFORM_VERSION__", persona["platform_version"]).replace(
+            "__PLATFORM__", persona["platform"]
         )
+        await context.add_init_script(init_script)
         page = await context.new_page()
         return browser, context, page
 
@@ -465,7 +610,8 @@ class LinkedInScraper:
     async def _save_state(context):
         await context.storage_state(path=config.STORAGE_STATE_PATH)
 
-    async def _extract_results(self, page, company=None):
+    async def _extract_results(self, page, company=None, ctx=None):
+        ctx = ctx if ctx is not None else {}
         results = []
         cards = page.locator(selectors.RESULT_CARD)
         count = await cards.count()
@@ -500,16 +646,44 @@ class LinkedInScraper:
                 if snippet and self._snippet_is_current(snippet):
                     # "Actual: <puesto> en <empresa>": confianza total.
                     role = self.clean_position(snippet)
-                elif url and company:
+                elif url and company and ctx.get("budget_left", 0) > 0:
                     # Snippet ausente o no fiable ("Anterior:", "Educación:",
-                    # texto libre): se verifica el puesto real en el perfil.
+                    # texto libre): se verifica el puesto real en el perfil,
+                    # sujeto al tope diario y a pausas largas entre bloques.
+                    if ctx["since_pause"] >= config.PROFILE_LOOKUP_SESSION_MAX:
+                        # Pausa larga entre bloques: el reloj de sesión se
+                        # congela (ese tiempo no consume el límite activo).
+                        ctx["clock"].pause()
+                        try:
+                            await asyncio.sleep(
+                                random.uniform(
+                                    config.PROFILE_LOOKUP_BLOCK_PAUSE_MIN,
+                                    config.PROFILE_LOOKUP_BLOCK_PAUSE_MAX,
+                                )
+                            )
+                        finally:
+                            ctx["clock"].resume()
+                        ctx["since_pause"] = 0
                     found = await self._lookup_current_role(page, url, company)
+                    ctx["budget_left"] -= 1
+                    ctx["lookups_done"] += 1
+                    ctx["since_pause"] += 1
+                    on_usage = ctx.get("on_usage")
+                    if on_usage:
+                        try:
+                            on_usage(1)  # persiste al instante (crash-safe)
+                        except Exception:
+                            pass
+                    if found:
+                        role = found
                     await self._human_delay(
                         config.PROFILE_LOOKUP_DELAY_MIN,
                         config.PROFILE_LOOKUP_DELAY_MAX,
                     )
-                    if found:
-                        role = found
+                elif url and company:
+                    # Tope diario agotado: el cargo queda el del snippet,
+                    # sin verificar. El job continúa y exporta lo que haya.
+                    ctx["skipped_daily"] += 1
             if not name and not url:
                 continue
             if "linkedin.com/in/" not in url:
@@ -538,6 +712,24 @@ class LinkedInScraper:
             raise AuthWallError("LinkedIn redirigió a una pared de autenticación.")
         if await page.locator(selectors.GUEST_WALL_MODAL).count() > 0:
             raise AuthWallError("LinkedIn muestra una ventana de inicio de sesión.")
+        await self._check_restriction_text(page)
+
+    @staticmethod
+    async def _check_restriction_text(page):
+        """Detecta mensajes de restricción de uso / límite alcanzado en el
+        texto visible de la página y aborta el job (circuit breaker)."""
+        try:
+            text = await page.locator("body").inner_text(timeout=2500)
+        except Exception:
+            return
+        sample = re.sub(r"\s+", " ", (text or "")[:8000])
+        if not sample:
+            return
+        for pattern in selectors.RESTRICTION_TEXT_PATTERNS:
+            if pattern.search(sample):
+                raise RestrictionError(
+                    "LinkedIn muestra un mensaje de restricción o límite alcanzado."
+                )
 
     async def _scroll_gradually(self, page):
         delay_min = int(config.SCROLL_STEP_DELAY_MIN * 1000)

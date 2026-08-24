@@ -10,6 +10,9 @@ services:
     environment:
       CHROMIUM_NO_SANDBOX: "1"
       VNC_ENABLED: "1"
+      # Hora local del servidor: define la ventana 8–21 de búsquedas, el
+      # cooldown y el contador diario. Cámbiala a tu zona si difiere.
+      TZ: "America/Santiago"
       # Descomenta para proteger el escritorio noVNC con contraseña:
       # VNC_PASSWORD: "cambia-esto"
     restart: unless-stopped

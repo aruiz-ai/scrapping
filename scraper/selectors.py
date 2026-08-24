@@ -37,6 +37,41 @@ GUEST_WALL_MODAL = "div.cta-modal"
 AUTHWALL_URL_MARKS = ("/authwall", "/login", "/signup", "/checkpoint", "captcha", "challenge")
 
 # ---------------------------------------------------------------------------
+# Circuit breaker: mensajes de restricción de uso / fricción nueva que LinkedIn
+# muestra en el texto visible de la página (aunque con Premium tarden más en
+# aparecer). Frases curadas bilingües para minimizar falsos positivos; si
+# cualquiera aparece, el job se aborta igual que con CaptchaError/AuthWall.
+# ---------------------------------------------------------------------------
+
+RESTRICTION_TEXT_PATTERNS = [
+    # "el uso comercial no está permitido" / "commercial use is not allowed"
+    re.compile(
+        r"(uso comercial|commercial use).{0,40}"
+        r"(no\s+(se\s+)?(est[áa]\s+)?permitid[oa]|not\s+permitted|not\s+allowed"
+        r"|prohibido|prohibited)",
+        re.IGNORECASE,
+    ),
+    # "has alcanzado el límite/máximo de..." / "you've reached the limit..."
+    re.compile(
+        r"(has alcanzado|alcanzado el|has reached|reached the)[^.]{0,80}"
+        r"(l[ií]mite|l[ií]mites|m[aá]ximo|maximum|limit)",
+        re.IGNORECASE,
+    ),
+    # "tu cuenta ha sido restringida/limitada" / "your account has been restricted"
+    re.compile(
+        r"(tu cuenta|su cuenta|your account)[^.]{0,40}"
+        r"(restringida|restricted|limitada|limited)",
+        re.IGNORECASE,
+    ),
+    # "temporalmente bloqueado/restringido" / "temporarily blocked/restricted"
+    re.compile(
+        r"(temporalmente|temporarily)[^.]{0,20}"
+        r"(bloquead[oa]|restringid[oa]|blocked|restricted)",
+        re.IGNORECASE,
+    ),
+]
+
+# ---------------------------------------------------------------------------
 # Panel "Todos los filtros" (People search) — versión 2026.
 # Ya NO es un modal: es un panel inline que se abre con el botón
 # "All filters"/"Todos los filtros". Cada filtro se aplica AL INSTANTE como

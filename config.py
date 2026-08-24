@@ -1,0 +1,42 @@
+import os
+
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+DATA_DIR = os.path.join(BASE_DIR, "data")
+EXPORTS_DIR = os.path.join(DATA_DIR, "exports")
+STORAGE_STATE_PATH = os.path.join(DATA_DIR, "storage_state.json")
+
+LINKEDIN_LOGIN_URL = "https://www.linkedin.com/login"
+LINKEDIN_FEED_URL = "https://www.linkedin.com/feed/"
+LINKEDIN_SEARCH_URL = "https://www.linkedin.com/search/results/people/"
+
+DEFAULT_MAX_PAGES = 10
+MAX_PAGES_LIMIT = 100
+ALL_PAGES_SAFETY_LIMIT = 500
+LOGIN_TIMEOUT_SECONDS = 5 * 60
+
+# Ritmo de scraping: cada página debe tardar entre PAGE_MIN_SECONDS y
+# PAGE_MAX_SECONDS en total (suma de carga, scroll, extracción y pausas).
+# El scraper mide el tiempo real gastado en la página y reparte el resto
+# como pausas "de lectura" en trozos, para imitar a una persona.
+PAGE_MIN_SECONDS = 60
+PAGE_MAX_SECONDS = 180
+PAUSE_CHUNK_MIN = 8        # tamaño mínimo de cada trozo de pausa (segundos)
+PAUSE_CHUNK_MAX = 25       # tamaño máximo de cada trozo de pausa (segundos)
+
+# Scroll gradual: pasos de SCROLL_STEP píxeles con una pausa aleatoria entre
+# pasos (lento a propósito: fuerza la carga diferida y suma tiempo de página).
+SCROLL_STEP = 300
+SCROLL_STEP_DELAY_MIN = 0.4   # segundos entre pasos de scroll
+SCROLL_STEP_DELAY_MAX = 0.9
+
+# Verificación del puesto en el perfil: cuando el snippet del resultado no es
+# "Actual: ..." se abre el perfil en una pestaña aparte, se lee la experiencia
+# actual y solo se usa si la empresa coincide con la buscada. Cada visita
+# añade una demora humana entre PROFILE_LOOKUP_DELAY_MIN y MAX segundos.
+PROFILE_LOOKUP_DELAY_MIN = 20
+PROFILE_LOOKUP_DELAY_MAX = 40
+PROFILE_LOAD_TIMEOUT_SECONDS = 45
+PROFILE_EXPERIENCE_WAIT_SECONDS = 15
+
+os.makedirs(DATA_DIR, exist_ok=True)
+os.makedirs(EXPORTS_DIR, exist_ok=True)

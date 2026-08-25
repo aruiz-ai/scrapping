@@ -82,6 +82,7 @@ function renderAuthStatus(data) {
   if (data.last_result && data.last_result.ok === false) {
     authBanner.textContent = "Error al iniciar sesión: " + data.last_result.error;
     authBanner.classList.remove("hidden");
+    makeLoginBanner();
   } else if (data.logged_in) {
     authBanner.textContent = "Sesión de LinkedIn activa.";
     authBanner.className = "banner banner-ok";

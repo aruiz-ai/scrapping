@@ -1,9 +1,19 @@
 #!/bin/sh
 set -e
 
+# Limpiar locks stale de ejecuciones anteriores (un restart conserva /tmp y
+# sin esto Xvfb muere con "Server is already active for display 99").
+rm -f /tmp/.X99-lock /tmp/.X99-unix/X99 /tmp/.X11-unix/X99 2>/dev/null || true
+
 # Display virtual: Chromium corre "headed" (anti-deteccion intacto) sin pantalla real
 Xvfb :99 -screen 0 "${XVFB_SCREEN:-1440x900x24}" -nolisten tcp &
-sleep 1
+
+# Esperar a que el socket de Xvfb exista antes de conectar clientes.
+i=0
+while [ ! -S /tmp/.X11-unix/X99 ] && [ "$i" -lt 40 ]; do
+    sleep 0.5
+    i=$((i + 1))
+done
 
 if [ "${VNC_ENABLED:-1}" = "1" ]; then
     # VNC directo (opcional, clientes nativos)

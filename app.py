@@ -25,6 +25,23 @@ _lock = threading.Lock()
 LOGIN_STATE = {"running": False, "last_result": None}
 
 
+def _export_partial(job_id, company, error_msg, status="error"):
+    """Exporta los resultados acumulados hasta el momento del fallo."""
+    job = jobs.get(job_id)
+    rows = job.get("results") if job else []
+    if not rows:
+        jobs.update(job_id, status=status, error=error_msg)
+        return
+    filepath, filename = export_to_excel(rows, company=company)
+    jobs.update(
+        job_id,
+        status=status,
+        error=f"{error_msg} — {len(rows)} resultado(s) parcial(es) exportado(s).",
+        filepath=filepath,
+        filename=filename,
+    )
+
+
 @app.get("/")
 def index():
     return render_template("index.html")
@@ -124,7 +141,6 @@ def api_search():
     if not os.path.exists(config.STORAGE_STATE_PATH):
         return jsonify({"error": "Necesitas iniciar sesión en LinkedIn primero."}), 401
 
-    daily_budget = usage.remaining_daily_lookups()
     usage.record_run_start()
     job = jobs.create(company, max_pages, all_pages=all_pages, filters=filters)
     threading.Thread(
@@ -135,14 +151,13 @@ def api_search():
             "all_pages": all_pages,
             "filters": filters,
             "job_id": job["id"],
-            "daily_budget": daily_budget,
         },
         daemon=True,
     ).start()
     return jsonify({"job_id": job["id"]})
 
 
-def _run_job(company, max_pages, all_pages, filters, job_id, daily_budget=None):
+def _run_job(company, max_pages, all_pages, filters, job_id):
     jobs.update(job_id, status="running", message="Iniciando búsqueda en LinkedIn...")
 
     def progress(page_no, found, results):
@@ -158,40 +173,17 @@ def _run_job(company, max_pages, all_pages, filters, job_id, daily_budget=None):
         )
         jobs.append_results(job_id, results)
 
-    def on_usage(count):
-        # Persiste cada visita a perfil al instante: si el proceso muere,
-        # el tope diario ya contabiliza lo visitado.
-        try:
-            usage.add_profile_lookups(count)
-        except Exception:
-            pass
-
-    stats = {}
     try:
         rows = scraper.scrape(
             company=company,
             progress=progress,
             max_pages=max_pages,
             filters=filters,
-            daily_lookup_budget=daily_budget,
-            on_usage=on_usage,
-            stats=stats,
         )
         jobs.append_results(job_id, rows)
-        notes = []
-        if stats.get("cut_by_session"):
-            notes.append(
-                f"sesión cortada por límite de "
-                f"{config.SESSION_MAX_ACTIVE_SECONDS // 60} min de actividad"
-            )
-        if stats.get("skipped_daily"):
-            notes.append(
-                f"{stats['skipped_daily']} perfiles sin verificar por tope diario"
-            )
-        suffix = f" ({'; '.join(notes)})" if notes else ""
         if not rows:
             jobs.update(
-                job_id, status="done", message="No se encontraron empleados." + suffix
+                job_id, status="done", message="No se encontraron empleados."
             )
             return
         filepath, filename = export_to_excel(rows, company=company)
@@ -199,43 +191,37 @@ def _run_job(company, max_pages, all_pages, filters, job_id, daily_budget=None):
             job_id,
             status="done",
             message=(
-                f"Scraping completado. {len(rows)} empleados encontrados." + suffix
+                f"Scraping completado. {len(rows)} empleados encontrados."
             ),
             filepath=filepath,
             filename=filename,
         )
     except RestrictionError as error:
-        jobs.update(
-            job_id,
-            status="error",
-            error=f"LinkedIn señalizó una restricción de uso: {error}",
-        )
+        _export_partial(job_id, company, f"LinkedIn señalizó una restricción de uso: {error}")
     except LoginRequiredError:
         try:
             os.remove(config.STORAGE_STATE_PATH)
         except OSError:
             pass
-        jobs.update(
-            job_id,
+        _export_partial(
+            job_id, company,
+            "La sesión de LinkedIn caducó. Inicia sesión de nuevo.",
             status="needs_login",
-            error="La sesión de LinkedIn caducó. Inicia sesión de nuevo.",
         )
     except (AuthWallError, CaptchaError) as error:
         try:
             os.remove(config.STORAGE_STATE_PATH)
         except OSError:
             pass
-        jobs.update(
-            job_id,
+        _export_partial(
+            job_id, company,
+            f"LinkedIn bloqueó la automatización: {error}",
             status="needs_login",
-            error=f"LinkedIn bloqueó la automatización: {error}",
         )
     except ScraperError as error:
-        jobs.update(job_id, status="error", error=str(error))
+        _export_partial(job_id, company, str(error))
     except Exception as error:
-        jobs.update(
-            job_id, status="error", error=f"Error inesperado: {error}"
-        )
+        _export_partial(job_id, company, f"Error inesperado: {error}")
     finally:
         usage.record_run_end()
 

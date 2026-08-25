@@ -3,7 +3,6 @@ import os
 import random
 import re
 import time
-import unicodedata
 from urllib.parse import quote_plus
 
 from playwright.async_api import async_playwright
@@ -60,35 +59,6 @@ class RestrictionError(ScraperError):
     """LinkedIn señalizó restricción de uso comercial o fricción nueva."""
 
 
-class _ActiveClock:
-    """Reloj de tiempo activo de la sesión.
-
-    La medición se puede congelar (pausas largas entre bloques de perfiles):
-    ese tiempo NO cuenta para el límite de sesión; el pacing normal sí.
-    """
-
-    def __init__(self):
-        self._started = time.monotonic()
-        self._frozen_total = 0.0
-        self._freeze_mark = None
-
-    def pause(self):
-        if self._freeze_mark is None:
-            self._freeze_mark = time.monotonic()
-
-    def resume(self):
-        if self._freeze_mark is not None:
-            self._frozen_total += time.monotonic() - self._freeze_mark
-            self._freeze_mark = None
-
-    def active_seconds(self):
-        total = time.monotonic() - self._started - self._frozen_total
-        if self._freeze_mark is not None:
-            # Congelación en curso: tampoco cuenta el tramo hasta ahora.
-            total -= time.monotonic() - self._freeze_mark
-        return total
-
-
 class LinkedInScraper:
 
     @staticmethod
@@ -111,162 +81,12 @@ class LinkedInScraper:
             text = text[: best[0]]
         return text.strip()
 
-    @staticmethod
-    def _snippet_is_current(snippet):
-        """True si el snippet es del tipo 'Actual: <puesto> en <empresa>'.
-
-        Solo ese formato describe el puesto ACTUAL; prefijos como 'Anterior:'
-        o 'Educación:' (o texto sin ':') no sirven y fuerzan la verificación
-        en el perfil.
-        """
-        text = (snippet or "").strip()
-        if ":" not in text:
-            return False
-        prefix, rest = text.split(":", 1)
-        return prefix.strip().lower() in ("actual", "current") and bool(rest.strip())
-
-    @staticmethod
-    def _parse_experience_item(text):
-        """Devuelve (titulo, empresa) del primer ítem de la sección Experiencia.
-
-        Formato típico de un puesto único:
-            Desarrollador CLOUD
-            VCSOFT · Jornada completa
-            ene. 2023 - actualidad · 2 años
-        Si la primera entrada es un grupo (varios puestos en la misma empresa),
-        la primera línea es la empresa y el título real aparece tras la duración.
-        """
-        lines = [
-            re.sub(r"\s+", " ", line).strip()
-            for line in (text or "").splitlines()
-        ]
-        lines = [line for line in lines if line]
-        # El card incluye el encabezado del section como primera línea.
-        while lines and lines[0].lower() in ("experiencia", "experience"):
-            lines = lines[1:]
-        if not lines:
-            return "", ""
-
-        def looks_like_dates(line):
-            if re.search(r"\d", line):
-                return True
-            return bool(
-                re.search(
-                    r"\b(actualidad|current|present)\b"
-                    r"|\b(ene|feb|mar|abr|may|jun|jul|ago|sep|set|oct|nov|dic"
-                    r"|jan|feb|apr|aug|sept|oct|nov|dec)\b",
-                    line,
-                    re.IGNORECASE,
-                )
-            )
-
-        # Línea de empresa: la primera con "·" que no sea un rango de fechas;
-        # el título es la línea inmediatamente anterior.
-        for i, line in enumerate(lines[:5]):
-            if "·" not in line or looks_like_dates(line):
-                continue
-            if i > 0:
-                return lines[i - 1], line.split("·", 1)[0].strip()
-            break
-        # Grupo de empresa: "Empresa / 4 años 3 meses / Puesto / fechas..."
-        if len(lines) >= 3 and re.search(
-            r"a[ñn]o|mes\b|year|month|yr\b", lines[1], re.IGNORECASE
-        ):
-            return lines[2], lines[0]
-        if len(lines) >= 2:
-            return lines[0], lines[1]
-        return lines[0], ""
-
-    @staticmethod
-    def _norm_company(value):
-        """Normaliza un nombre de empresa para compararlo (minúsculas, sin
-        acentos, sin signos ni sufijos societarios comunes)."""
-        text = (value or "").strip().lower()
-        text = unicodedata.normalize("NFKD", text)
-        text = "".join(ch for ch in text if not unicodedata.combining(ch))
-        text = re.sub(r"[^a-z0-9]+", " ", text).strip()
-        prev = None
-        while prev != text:
-            prev = text
-            text = re.sub(
-                r"\b(sa|sac|saa|srl|sl|eirl|ei|spa|inc|llc|ltd|ltda|corp|co)\b",
-                " ",
-                text,
-            )
-            text = re.sub(r"\s+", " ", text).strip()
-        return text
-
-    @classmethod
-    def _company_matches(cls, wanted, found):
-        """True si la empresa del perfil coincide con la buscada (contención
-        en cualquier dirección tras normalizar)."""
-        wanted_norm = cls._norm_company(wanted)
-        found_norm = cls._norm_company(found)
-        if len(wanted_norm) < 3 or len(found_norm) < 3:
-            return False
-        return wanted_norm in found_norm or found_norm in wanted_norm
-
-    async def _lookup_current_role(self, page, profile_url, company):
-        """Abre el perfil en una pestaña aparte y devuelve el puesto actual,
-        pero SOLO si la empresa de esa experiencia coincide con la buscada.
-
-        La pestaña del perfil se cierra al terminar; la página de resultados
-        nunca se abandona ni recarga. Devuelve None si algo falla o si la
-        empresa no coincide.
-        """
-        if profile_url.startswith("/"):
-            profile_url = "https://www.linkedin.com" + profile_url
-        profile_page = await page.context.new_page()
-        try:
-            await profile_page.goto(
-                profile_url,
-                wait_until="domcontentloaded",
-                timeout=config.PROFILE_LOAD_TIMEOUT_SECONDS * 1000,
-            )
-            await self._check_interruptions(profile_page)
-            # La seccion Experiencia se renderiza diferido: si se hace scroll
-            # nada mas cargar, el contenedor interno aun esta vacio y el
-            # contenido no se monta. Se deja hidratar, se hace scroll y se
-            # reintenta por si el primer recorrido fue demasiado pronto.
-            experiencia_visible = False
-            for _ in range(2):
-                await profile_page.wait_for_timeout(2000)
-                try:
-                    await self._scroll_gradually(profile_page)
-                except Exception:
-                    pass
-                try:
-                    await profile_page.wait_for_selector(
-                        selectors.EXPERIENCE_SECTION,
-                        timeout=config.PROFILE_EXPERIENCE_WAIT_SECONDS * 1000,
-                    )
-                    experiencia_visible = True
-                    break
-                except Exception:
-                    continue
-            if not experiencia_visible:
-                return None
-            section = profile_page.locator(selectors.EXPERIENCE_SECTION).first
-            try:
-                text = await section.inner_text(timeout=5000)
-            except Exception:
-                return None
-            title, found_company = self._parse_experience_item(text)
-            if title and self._company_matches(company, found_company):
-                return title
-            return None
-        finally:
-            await profile_page.close()
-
     def scrape(
         self,
         company,
         progress,
         max_pages,
         filters=None,
-        daily_lookup_budget=None,
-        on_usage=None,
-        stats=None,
     ):
         return asyncio.run(
             self._scrape(
@@ -274,9 +94,6 @@ class LinkedInScraper:
                 progress,
                 max_pages,
                 filters,
-                daily_lookup_budget=daily_lookup_budget,
-                on_usage=on_usage,
-                stats=stats,
             )
         )
 
@@ -289,27 +106,8 @@ class LinkedInScraper:
         progress,
         max_pages,
         filters=None,
-        daily_lookup_budget=None,
-        on_usage=None,
-        stats=None,
     ):
-        stats = stats if stats is not None else {}
-        budget = (
-            config.DAILY_PROFILE_LOOKUP_LIMIT
-            if daily_lookup_budget is None
-            else max(0, int(daily_lookup_budget))
-        )
-        ctx = {
-            "budget_left": budget,   # presupuesto diario de visitas a perfil
-            "lookups_done": 0,       # visitas hechas en este job
-            "skipped_daily": 0,      # perfiles saltados por tope diario
-            "since_pause": 0,        # visitas desde la última pausa larga
-            "on_usage": on_usage,
-            "clock": _ActiveClock(),
-        }
         browser, context, page = await self._open()
-        cut_by_session = False
-        pages_done = 0
         try:
             first_url = (
                 f"{config.LINKEDIN_SEARCH_URL}?keywords={quote_plus(company)}"
@@ -356,34 +154,19 @@ class LinkedInScraper:
                     await self._scroll_gradually(page)
                     await self._check_interruptions(page)
 
-                page_results = await self._extract_results(page, company, ctx)
+                page_results = await self._extract_results(page)
                 new_on_page = self._new_items(page_results, all_results)
                 all_results.extend(new_on_page)
 
                 progress(page_no, len(all_results), all_results)
-                pages_done += 1
 
                 if not page_results or not new_on_page:
                     break
                 # Ritmo humano: completa la página hasta el objetivo de
                 # 3-5 min (config) con pausas repartidas en trozos.
                 await self._pace_page(time.monotonic() - page_started)
-                # Límite de sesión activa: corta tras completar la página en
-                # curso y devuelve lo acumulado (las pausas largas de bloque
-                # no cuentan; el reloj las tiene congeladas).
-                if ctx["clock"].active_seconds() >= config.SESSION_MAX_ACTIVE_SECONDS:
-                    cut_by_session = True
-                    break
             return all_results
         finally:
-            stats.update(
-                {
-                    "pages_done": pages_done,
-                    "cut_by_session": cut_by_session,
-                    "lookups_done": ctx["lookups_done"],
-                    "skipped_daily": ctx["skipped_daily"],
-                }
-            )
             await browser.close()
             await self._pw.stop()
 
@@ -610,8 +393,7 @@ class LinkedInScraper:
     async def _save_state(context):
         await context.storage_state(path=config.STORAGE_STATE_PATH)
 
-    async def _extract_results(self, page, company=None, ctx=None):
-        ctx = ctx if ctx is not None else {}
+    async def _extract_results(self, page):
         results = []
         cards = page.locator(selectors.RESULT_CARD)
         count = await cards.count()
@@ -635,55 +417,6 @@ class LinkedInScraper:
                 ).strip()
             except Exception:
                 role = ""
-            snippet_locator = card.locator(selectors.SNIPPET)
-            if await snippet_locator.count() > 0:
-                try:
-                    snippet = (
-                        await snippet_locator.first.inner_text(timeout=3000)
-                    ).strip()
-                except Exception:
-                    snippet = ""
-                if snippet and self._snippet_is_current(snippet):
-                    # "Actual: <puesto> en <empresa>": confianza total.
-                    role = self.clean_position(snippet)
-                elif url and company and ctx.get("budget_left", 0) > 0:
-                    # Snippet ausente o no fiable ("Anterior:", "Educación:",
-                    # texto libre): se verifica el puesto real en el perfil,
-                    # sujeto al tope diario y a pausas largas entre bloques.
-                    if ctx["since_pause"] >= config.PROFILE_LOOKUP_SESSION_MAX:
-                        # Pausa larga entre bloques: el reloj de sesión se
-                        # congela (ese tiempo no consume el límite activo).
-                        ctx["clock"].pause()
-                        try:
-                            await asyncio.sleep(
-                                random.uniform(
-                                    config.PROFILE_LOOKUP_BLOCK_PAUSE_MIN,
-                                    config.PROFILE_LOOKUP_BLOCK_PAUSE_MAX,
-                                )
-                            )
-                        finally:
-                            ctx["clock"].resume()
-                        ctx["since_pause"] = 0
-                    found = await self._lookup_current_role(page, url, company)
-                    ctx["budget_left"] -= 1
-                    ctx["lookups_done"] += 1
-                    ctx["since_pause"] += 1
-                    on_usage = ctx.get("on_usage")
-                    if on_usage:
-                        try:
-                            on_usage(1)  # persiste al instante (crash-safe)
-                        except Exception:
-                            pass
-                    if found:
-                        role = found
-                    await self._human_delay(
-                        config.PROFILE_LOOKUP_DELAY_MIN,
-                        config.PROFILE_LOOKUP_DELAY_MAX,
-                    )
-                elif url and company:
-                    # Tope diario agotado: el cargo queda el del snippet,
-                    # sin verificar. El job continúa y exporta lo que haya.
-                    ctx["skipped_daily"] += 1
             if not name and not url:
                 continue
             if "linkedin.com/in/" not in url:

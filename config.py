@@ -27,24 +27,6 @@ PAUSE_CHUNK_MAX = 25       # tamaño máximo de cada trozo de pausa (segundos)
 # Límites anti-detección (uso personal a bajo volumen)
 # ---------------------------------------------------------------------------
 
-# Sesión continua máxima medida en TIEMPO ACTIVO: las pausas largas entre
-# bloques de perfiles no cuentan (el reloj se congela durante ellas); el
-# pacing normal de página sí. Al llegar al límite el job corta tras terminar
-# la página en curso y exporta lo acumulado.
-SESSION_MAX_ACTIVE_SECONDS = 120 * 60
-
-# Visitas a perfil: se hacen en bloques; al completar un bloque se inserta
-# UNA pausa larga aleatoria antes del siguiente.
-PROFILE_LOOKUP_SESSION_MAX = 15
-PROFILE_LOOKUP_BLOCK_PAUSE_MIN = 5 * 60
-PROFILE_LOOKUP_BLOCK_PAUSE_MAX = 15 * 60
-
-# Tope diario duro de visitas de perfil hechas por el scraper (persistente
-# en data/usage_state.json). Si se agota a mitad de job, las restantes se
-# saltan y el cargo queda sin verificar. El uso MANUAL de LinkedIn no es
-# rastreable: súmalo a mano editando ese JSON.
-DAILY_PROFILE_LOOKUP_LIMIT = 70
-
 # Fingerprint: viewport con jitter por ejecución (tamaños realistas de
 # escritorio; nunca exactamente iguales entre corridas).
 VIEWPORT_WIDTH_RANGE = (1320, 1400)
@@ -63,15 +45,6 @@ USAGE_STATE_PATH = os.path.join(DATA_DIR, "usage_state.json")
 SCROLL_STEP = 150
 SCROLL_STEP_DELAY_MIN = 0.6   # segundos entre pasos de scroll
 SCROLL_STEP_DELAY_MAX = 1.2
-
-# Verificación del puesto en el perfil: cuando el snippet del resultado no es
-# "Actual: ..." se abre el perfil en una pestaña aparte, se lee la experiencia
-# actual y solo se usa si la empresa coincide con la buscada. Cada visita
-# añade una demora humana entre PROFILE_LOOKUP_DELAY_MIN y MAX segundos.
-PROFILE_LOOKUP_DELAY_MIN = 30
-PROFILE_LOOKUP_DELAY_MAX = 60
-PROFILE_LOAD_TIMEOUT_SECONDS = 68
-PROFILE_EXPERIENCE_WAIT_SECONDS = 23
 
 # Panel de filtros (calibrado en vivo, ritmo tranquilo): cada selección
 # escribe en el typeahead, espera a que aparezcan las opciones (~4 s) y

@@ -1,13 +1,10 @@
 """Registro persistente de uso del scraper (data/usage_state.json).
 
-Lleva la cuenta diaria de visitas a perfil hechas por el scraper y la hora
-de fin de la última ejecución, para aplicar el tope diario, el cooldown
-entre ejecuciones y la ventana horaria de arranque.
+Lleva la cuenta de la hora de fin de la última ejecución, para aplicar el
+cooldown entre ejecuciones y la ventana horaria de arranque.
 
 El archivo vive en data/ (volumen Docker): sobrevive reinicios y
-recreaciones del contenedor. El uso MANUAL de LinkedIn no es rastreable
-desde aquí: para contabilizarlo, edita a mano la entrada del día en
-"profile_lookups".
+recreaciones del contenedor.
 """
 
 import json
@@ -18,12 +15,6 @@ from datetime import datetime, timedelta
 import config
 
 _LOCK = threading.Lock()
-_PRUNE_DAYS = 7  # días de historial que se conservan en el JSON
-
-
-def _today():
-    """Fecha local del servidor: clave del contador diario."""
-    return _now_local().strftime("%Y-%m-%d")
 
 
 def _load():
@@ -34,8 +25,6 @@ def _load():
         data = {}
     if not isinstance(data, dict):
         data = {}
-    if not isinstance(data.get("profile_lookups"), dict):
-        data["profile_lookups"] = {}
     return data
 
 
@@ -44,30 +33,6 @@ def _save(data):
     with open(tmp_path, "w", encoding="utf-8") as fh:
         json.dump(data, fh, ensure_ascii=False, indent=2)
     os.replace(tmp_path, config.USAGE_STATE_PATH)
-
-
-def daily_profile_count():
-    with _LOCK:
-        return int(_load()["profile_lookups"].get(_today(), 0))
-
-
-def remaining_daily_lookups():
-    return max(0, config.DAILY_PROFILE_LOOKUP_LIMIT - daily_profile_count())
-
-
-def add_profile_lookups(count=1):
-    """Suma visitas de perfil al día actual (llamada incremental por job)."""
-    if count <= 0:
-        return
-    with _LOCK:
-        data = _load()
-        lookups = data["profile_lookups"]
-        today = _today()
-        lookups[today] = int(lookups.get(today, 0)) + count
-        cutoff = (datetime.now() - timedelta(days=_PRUNE_DAYS)).strftime("%Y-%m-%d")
-        for day in [day for day in lookups if str(day) < cutoff]:
-            del lookups[day]
-        _save(data)
 
 
 def _now_local():

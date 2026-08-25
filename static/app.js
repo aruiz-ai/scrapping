@@ -192,6 +192,10 @@ function renderJob(job) {
     clearInterval(pollingNull);
     resultCard.classList.add("hidden");
     setError(job.error);
+    if (job.filepath) {
+      downloadBtn.href = "/api/jobs/" + job.id + "/download";
+      downloadBtn.classList.remove("hidden");
+    }
     refreshAuth();
     searchBtn.disabled = false;
     searchBtn.classList.remove("btn-disabled");
@@ -199,6 +203,10 @@ function renderJob(job) {
   } else if (job.status === "error") {
     clearInterval(pollingNull);
     setError(job.error || "Ocurrió un error inesperado.");
+    if (job.filepath) {
+      downloadBtn.href = "/api/jobs/" + job.id + "/download";
+      downloadBtn.classList.remove("hidden");
+    }
     searchBtn.disabled = false;
     searchBtn.classList.remove("btn-disabled");
     searchBtn.textContent = "Buscar empleados";

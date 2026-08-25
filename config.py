@@ -31,7 +31,7 @@ PAUSE_CHUNK_MAX = 25       # tamaño máximo de cada trozo de pausa (segundos)
 # bloques de perfiles no cuentan (el reloj se congela durante ellas); el
 # pacing normal de página sí. Al llegar al límite el job corta tras terminar
 # la página en curso y exporta lo acumulado.
-SESSION_MAX_ACTIVE_SECONDS = 60 * 60
+SESSION_MAX_ACTIVE_SECONDS = 120 * 60
 
 # Visitas a perfil: se hacen en bloques; al completar un bloque se inserta
 # UNA pausa larga aleatoria antes del siguiente.
@@ -60,18 +60,18 @@ USAGE_STATE_PATH = os.path.join(DATA_DIR, "usage_state.json")
 
 # Scroll gradual: pasos de SCROLL_STEP píxeles con una pausa aleatoria entre
 # pasos (lento a propósito: fuerza la carga diferida y suma tiempo de página).
-SCROLL_STEP = 300
-SCROLL_STEP_DELAY_MIN = 0.4   # segundos entre pasos de scroll
-SCROLL_STEP_DELAY_MAX = 0.9
+SCROLL_STEP = 150
+SCROLL_STEP_DELAY_MIN = 0.6   # segundos entre pasos de scroll
+SCROLL_STEP_DELAY_MAX = 1.2
 
 # Verificación del puesto en el perfil: cuando el snippet del resultado no es
 # "Actual: ..." se abre el perfil en una pestaña aparte, se lee la experiencia
 # actual y solo se usa si la empresa coincide con la buscada. Cada visita
 # añade una demora humana entre PROFILE_LOOKUP_DELAY_MIN y MAX segundos.
-PROFILE_LOOKUP_DELAY_MIN = 20
-PROFILE_LOOKUP_DELAY_MAX = 40
-PROFILE_LOAD_TIMEOUT_SECONDS = 45
-PROFILE_EXPERIENCE_WAIT_SECONDS = 15
+PROFILE_LOOKUP_DELAY_MIN = 30
+PROFILE_LOOKUP_DELAY_MAX = 60
+PROFILE_LOAD_TIMEOUT_SECONDS = 68
+PROFILE_EXPERIENCE_WAIT_SECONDS = 23
 
 # Panel de filtros (calibrado en vivo, ritmo tranquilo): cada selección
 # escribe en el typeahead, espera a que aparezcan las opciones (~4 s) y

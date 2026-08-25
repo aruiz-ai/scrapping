@@ -210,15 +210,23 @@ def _run_job(company, max_pages, all_pages, filters, job_id, daily_budget=None):
             error=f"LinkedIn señalizó una restricción de uso: {error}",
         )
     except LoginRequiredError:
+        try:
+            os.remove(config.STORAGE_STATE_PATH)
+        except OSError:
+            pass
         jobs.update(
             job_id,
             status="needs_login",
             error="La sesión de LinkedIn caducó. Inicia sesión de nuevo.",
         )
     except (AuthWallError, CaptchaError) as error:
+        try:
+            os.remove(config.STORAGE_STATE_PATH)
+        except OSError:
+            pass
         jobs.update(
             job_id,
-            status="error",
+            status="needs_login",
             error=f"LinkedIn bloqueó la automatización: {error}",
         )
     except ScraperError as error:

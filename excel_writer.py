@@ -44,8 +44,7 @@ def export_to_excel(rows, company):
 
     ws.freeze_panes = "A2"
 
-    stamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-    filename = f"empleados_{sanitize_filename(company)}_{stamp}.xlsx"
+    filename = f"{sanitize_filename(company)}.xlsx"
     filepath = os.path.join(config.EXPORTS_DIR, filename)
     wb.save(filepath)
     return filepath, filename

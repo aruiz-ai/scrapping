@@ -108,6 +108,14 @@ def record_run_end():
         _save(data)
 
 
+def clear_run_end():
+    """Borra last_run_end (reinicia el cooldown, usado al solicitar login)."""
+    with _LOCK:
+        data = _load()
+        data.pop("last_run_end", None)
+        _save(data)
+
+
 def can_start_search(now=None):
     """Devuelve (permitido, motivo) según ventana horaria y cooldown.
 

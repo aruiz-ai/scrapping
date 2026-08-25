@@ -48,6 +48,7 @@ def api_login():
             return jsonify({"ok": True, "running": True})
         LOGIN_STATE["running"] = True
         LOGIN_STATE["last_result"] = None
+    usage.clear_run_end()
     threading.Thread(target=_run_login, daemon=True).start()
     return jsonify({"ok": True, "running": True})
 

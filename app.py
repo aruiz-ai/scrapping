@@ -125,18 +125,20 @@ def api_search():
             max_pages = config.DEFAULT_MAX_PAGES
         max_pages = max(1, min(max_pages, config.MAX_PAGES_LIMIT))
 
-    # Filtros del nuevo panel: ubicación(es), sector(es) y SIEMPRE la empresa
-    # buscada como "Empresa actual" (automática, no la pide el usuario).
+    # Filtros del nuevo panel: ubicación(es), sector(es).
+    # "Empresa actual" solo se inyecta en modo contactos (búsqueda por empresa).
     raw_filters = data.get("filters") or {}
     locations = _normalize_list(raw_filters.get("locations"))
     industries = _normalize_list(raw_filters.get("industries"))
+    search_type = data.get("search_type") or "contactos"
     filters = None
     if locations or industries:
         filters = {
             "locations": locations,
             "industries": industries,
-            "current_company": company,
         }
+        if search_type == "contactos":
+            filters["current_company"] = company
 
     if not os.path.exists(config.STORAGE_STATE_PATH):
         return jsonify({"error": "Necesitas iniciar sesión en LinkedIn primero."}), 401

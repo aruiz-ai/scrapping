@@ -261,13 +261,13 @@ form.addEventListener("submit", async (event) => {
     // como "company" para compatibilidad con el backend, pero el usuario
     // sabe que debe poner palabras clave de tecnología.
     empresaInput.name = "company"; // asegurar nombre consistente
-    payloadCompany = empresaInput.placeholder; // usar el placeholder como valor de búsqueda
+    payloadCompany = companyValue; // usar lo que el usuario escribió
   }
 
   const maxPages = parseInt(maxPagesInput.value, 10) || 10;
   const payload = allPagesCheckbox.checked
-    ? { company: payloadCompany, all_pages: true }
-    : { company: payloadCompany, max_pages: maxPages };
+    ? { company: payloadCompany, search_type: tabActivo, all_pages: true }
+    : { company: payloadCompany, search_type: tabActivo, max_pages: maxPages };
 
   const filters = {};
   const locations = splitList($("filterLocations").value);
